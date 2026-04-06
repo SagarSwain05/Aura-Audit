@@ -1,0 +1,50 @@
+# ── Environment / Secrets ─────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.env
+
+# ── Node.js ───────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ── Next.js ───────────────────────────────────────────────────────
+client/.next/
+client/out/
+client/.vercel
+
+# ── Python ────────────────────────────────────────────────────────
+ai-engine/venv/
+ai-engine/__pycache__/
+ai-engine/**/__pycache__/
+ai-engine/**/*.pyc
+ai-engine/**/*.pyo
+ai-engine/.pytest_cache/
+ai-engine/*.egg-info/
+ai-engine/dist/
+ai-engine/build/
+ai-engine/data/*.pkl
+ai-engine/data/*.db
+ai-engine/chroma_db/
+
+# ── OS ────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Editor ────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+
+# ── Logs ──────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Test / Coverage ───────────────────────────────────────────────
+coverage/
+.nyc_output/
+ai-engine/data/chroma_db/
+ai-engine/data/*.db
+ai-engine/data/*.bin
