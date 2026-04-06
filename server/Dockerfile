@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Cache dependency layer
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --only=production --legacy-peer-deps
 
 COPY . .
 

@@ -1,5 +1,5 @@
 [phases.build]
-cmds = ["npm ci --only=production"]
+cmds = ["npm ci --only=production --legacy-peer-deps"]
 
 [start]
 cmd = "node src/index.js"
