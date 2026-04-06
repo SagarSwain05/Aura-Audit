@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: aura-audit-ai
+    env: docker
+    rootDir: ai-engine
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_KEY_1
+        sync: false
+      - key: GEMINI_KEY_2
+        sync: false
+      - key: GEMINI_KEY_3
+        sync: false
+      - key: GEMINI_KEY_4
+        sync: false
+      - key: GROQ_KEY_1
+        sync: false
+      - key: GROQ_KEY_2
+        sync: false
+      - key: GROQ_KEY_3
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: PINECONE_INDEX
+        sync: false
+      - key: YOUTUBE_API_KEY
+        sync: false
+      - key: SERPAPI_KEY
+        sync: false
