@@ -41,7 +41,11 @@ app.include_router(jobs_router, prefix="/api/v1")
 app.include_router(live_jobs_router, prefix="/api/v1")
 
 
-# ── Health ────────────────────────────────────────────
+# ── Root + Health ─────────────────────────────────────
+@app.get("/")
+async def root():
+    return {"status": "ok", "service": "Aura-Audit AI Engine", "version": "2.0.0", "docs": "/docs"}
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "engine": "Aura-Audit v2.0.0"}

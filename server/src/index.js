@@ -23,16 +23,21 @@ const notificationRoutes = require('./routes/notifications');
 const app = express();
 const server = http.createServer(app);
 
-// Allowed origins — local dev + production Vercel URL
+// Allowed origins — local dev + all Vercel preview/production URLs
 const ALLOWED_ORIGINS = [
-  process.env.CLIENT_URL,           // e.g. https://aura-audit.vercel.app
+  process.env.CLIENT_URL,
   'http://localhost:3000',
   'http://localhost:3001',
 ].filter(Boolean);
 const corsOptions = {
   origin: (origin, cb) => {
     // Allow requests with no origin (curl, Postman, mobile apps)
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    if (!origin) return cb(null, true);
+    // Allow any vercel.app subdomain (covers all preview deployments)
+    if (origin.endsWith('.vercel.app')) return cb(null, true);
+    if (origin.endsWith('.onrender.com')) return cb(null, true);
+    if (origin.endsWith('.railway.app')) return cb(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
     cb(new Error(`CORS blocked: ${origin}`));
   },
   credentials: true,
@@ -53,6 +58,7 @@ app.use('/api/audit', rateLimit({ windowMs: 15 * 60 * 1000, max: 200 }));
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 200 }));
 
 // ── Routes ─────────────────────────────────────────────
+app.get('/', (req, res) => res.json({ status: 'ok', service: 'Aura-Audit API', version: 'v2', docs: '/health' }));
 app.get('/health', (req, res) => res.json({ status: 'ok', service: 'aura-audit-server v2' }));
 app.use('/api/auth', authRoutes);
 app.use('/api/audit', auditRoutes);
