@@ -106,7 +106,7 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="min-h-screen bg-aura-bg">
+    <div className="min-h-screen" style={{ backgroundColor: 'rgb(var(--c-bg))' }}>
       <Navbar />
 
       <div className="max-w-2xl mx-auto px-4 pt-28 pb-16">
@@ -119,10 +119,10 @@ export default function UploadPage() {
             <Sparkles className="w-4 h-4" />
             Gemini 1.5 Flash Analysis
           </div>
-          <h1 className="text-4xl font-black mb-3">
+          <h1 className="text-4xl font-black mb-3" style={{ color: 'rgb(var(--c-text))' }}>
             Upload Your <span className="gradient-text">Resume</span>
           </h1>
-          <p className="text-aura-muted">
+          <p style={{ color: 'rgb(var(--c-muted))' }}>
             PDF only · Max 10 MB · Deleted immediately after analysis
           </p>
         </motion.div>
@@ -182,10 +182,10 @@ export default function UploadPage() {
                     <Upload className={`w-8 h-8 ${isDragActive ? 'text-aura-purple-light' : 'text-aura-muted'}`} />
                   </div>
                   <div>
-                    <p className="font-semibold mb-1">
+                    <p className="font-semibold mb-1" style={{ color: 'rgb(var(--c-text))' }}>
                       {isDragActive ? 'Drop it here!' : 'Drag & drop your resume'}
                     </p>
-                    <p className="text-aura-muted text-sm">or click to browse files · PDF only</p>
+                    <p className="text-sm" style={{ color: 'rgb(var(--c-muted))' }}>or click to browse files · PDF only</p>
                   </div>
                 </motion.div>
               )}

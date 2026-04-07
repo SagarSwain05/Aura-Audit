@@ -70,7 +70,7 @@ export default function AuditPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-aura-bg flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "rgb(var(--c-bg))" }}>
         <Navbar />
         <div className="text-center">
           <Loader2 className="w-10 h-10 animate-spin text-aura-purple mx-auto mb-3" />
@@ -86,7 +86,7 @@ export default function AuditPage() {
   const isFailed = audit.status === 'failed'
 
   return (
-    <div className="min-h-screen bg-aura-bg">
+    <div className="min-h-screen" style={{ backgroundColor: 'rgb(var(--c-bg))' }}>
       <Navbar />
 
       <div className="max-w-7xl mx-auto px-4 pt-20 pb-8">
@@ -98,7 +98,7 @@ export default function AuditPage() {
             </Link>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-bold text-lg">Audit Results</h1>
+                <h1 className="font-bold text-lg" style={{ color: 'rgb(var(--c-text))' }}>Audit Results</h1>
                 {audit.blindMode && (
                   <span className="badge bg-aura-cyan/20 text-aura-cyan border-aura-cyan/30 text-[10px]">
                     <Shield className="w-3 h-3" /> Blind Mode
