@@ -2,7 +2,13 @@
 
 import { motion } from 'framer-motion'
 import Link from 'next/link'
-import { ArrowRight, Target, Map, Star, TrendingUp, Shield, Users, ChevronRight, Sparkles, BarChart3, Brain, Layers, BookOpen, Github } from 'lucide-react'
+import {
+  ArrowRight, Target, Map, Star, Shield, ChevronRight, Sparkles,
+  BarChart3, Brain, Layers, BookOpen, Github, Zap, Trophy,
+  Briefcase, Users, GraduationCap, Building2, Activity,
+  Bell, FileText, TrendingUp, Award, Search, PieChart,
+  ClipboardList, CheckCircle, Upload, UserCheck,
+} from 'lucide-react'
 import Navbar from '@/components/Navbar'
 
 const FEATURES = [
@@ -58,10 +64,87 @@ const HOW_IT_WORKS = [
   { step: '04', title: 'Bridge the gap', desc: 'Get your dream role roadmap with YouTube tutorials, project ideas, and timelines.' },
 ]
 
+const STUDENT_FEATURES = [
+  { icon: <Zap className="w-4 h-4" />, label: 'AI Resume Audit & Aura Score' },
+  { icon: <Trophy className="w-4 h-4" />, label: 'Leaderboard & Career Points' },
+  { icon: <Briefcase className="w-4 h-4" />, label: 'Live Job Board (One-Click Apply)' },
+  { icon: <Brain className="w-4 h-4" />, label: 'AI-Proctored Skill Assessments' },
+  { icon: <Activity className="w-4 h-4" />, label: 'Skills Tracker & Career Readiness' },
+  { icon: <FileText className="w-4 h-4" />, label: 'AI Resume Builder' },
+  { icon: <TrendingUp className="w-4 h-4" />, label: 'Career Analytics & Progress' },
+  { icon: <Bell className="w-4 h-4" />, label: 'Real-Time Notifications' },
+  { icon: <Map className="w-4 h-4" />, label: '30-Day Learning Roadmaps' },
+  { icon: <Award className="w-4 h-4" />, label: 'Badges & Gamification' },
+]
+
+const COMPANY_FEATURES = [
+  { icon: <Search className="w-4 h-4" />, label: 'AI Candidate Matching Engine' },
+  { icon: <Briefcase className="w-4 h-4" />, label: 'Job Posting & Management' },
+  { icon: <Users className="w-4 h-4" />, label: 'Talent Pipeline Dashboard' },
+  { icon: <PieChart className="w-4 h-4" />, label: 'Hiring Analytics & Reports' },
+  { icon: <UserCheck className="w-4 h-4" />, label: 'KYC Verification' },
+  { icon: <ClipboardList className="w-4 h-4" />, label: 'Assessment Score Access' },
+  { icon: <Star className="w-4 h-4" />, label: 'Aura Score Candidate Filter' },
+  { icon: <Shield className="w-4 h-4" />, label: 'Blind Hiring Compliance Mode' },
+]
+
+const UNIVERSITY_FEATURES = [
+  { icon: <GraduationCap className="w-4 h-4" />, label: 'Placement Rate Tracker' },
+  { icon: <BarChart3 className="w-4 h-4" />, label: 'Employability Reports (Dept-wise)' },
+  { icon: <Activity className="w-4 h-4" />, label: 'Student Progress Monitoring' },
+  { icon: <Building2 className="w-4 h-4" />, label: 'Company Connections Hub' },
+  { icon: <Upload className="w-4 h-4" />, label: 'Bulk Resume Upload' },
+  { icon: <CheckCircle className="w-4 h-4" />, label: 'Intervention Alerts (At-Risk)' },
+  { icon: <ClipboardList className="w-4 h-4" />, label: 'TPO Assessment Management' },
+  { icon: <TrendingUp className="w-4 h-4" />, label: 'Year-on-Year Placement Trends' },
+]
+
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
   show: { opacity: 1, y: 0 },
 }
+
+const ECOSYSTEM = [
+  {
+    role: 'Students',
+    icon: <GraduationCap className="w-6 h-6" />,
+    tagline: 'From campus to career, powered by AI',
+    description: 'A complete career launchpad — audit your resume, track your skills, compete on leaderboards, apply to live jobs, and prepare for interviews, all in one dashboard.',
+    gradient: 'from-aura-purple to-violet-600',
+    border: 'border-aura-purple/30',
+    bg: 'bg-aura-purple/5',
+    cta: 'Explore Student Dashboard',
+    href: '/auth?tab=signup&role=student',
+    features: STUDENT_FEATURES,
+    badge: { color: 'bg-aura-purple/20 text-aura-purple-light border-aura-purple/30', label: 'For Students' },
+  },
+  {
+    role: 'Companies',
+    icon: <Building2 className="w-6 h-6" />,
+    tagline: 'Hire smarter with AI-ranked talent',
+    description: 'Post jobs, access AI-matched candidates filtered by Aura Score, manage your hiring pipeline, and get deep analytics — all without sifting through hundreds of unqualified resumes.',
+    gradient: 'from-cyan-500 to-blue-600',
+    border: 'border-cyan-500/30',
+    bg: 'bg-cyan-500/5',
+    cta: 'Explore Company Dashboard',
+    href: '/auth?tab=signup&role=company',
+    features: COMPANY_FEATURES,
+    badge: { color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30', label: 'For Industry' },
+  },
+  {
+    role: 'Universities',
+    icon: <GraduationCap className="w-6 h-6" />,
+    tagline: 'Turn placement data into placement results',
+    description: 'Give your TPO a real-time command center — track every student\'s career readiness, spot at-risk students before placement season, and build stronger industry connections.',
+    gradient: 'from-emerald-500 to-teal-600',
+    border: 'border-emerald-500/30',
+    bg: 'bg-emerald-500/5',
+    cta: 'Explore University Dashboard',
+    href: '/auth?tab=signup&role=tpo',
+    features: UNIVERSITY_FEATURES,
+    badge: { color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30', label: 'For Universities' },
+  },
+]
 
 export default function LandingPage() {
   return (
@@ -113,10 +196,10 @@ export default function LandingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, duration: 0.6 }}
             className="text-xl max-w-2xl mx-auto mb-10 leading-relaxed"
-            style={{ color: 'rgb(var(--c-mutl))' }}
+            style={{ color: 'rgb(var(--c-muted))' }}
           >
             Upload your resume. Get your Aura Score. Fix it with AI. Land your dream role.
-            The only tool that bridges the gap between your college projects and industry standards.
+            The only platform that connects students, companies, and universities in one career ecosystem.
           </motion.p>
 
           <motion.div
@@ -129,9 +212,28 @@ export default function LandingPage() {
               Audit My Resume Free
               <ArrowRight className="w-5 h-5" />
             </Link>
-            <Link href="/auth" className="btn-secondary flex items-center gap-2 text-base px-8 py-4">
-              Sign In
+            <Link href="/auth?tab=signup" className="btn-secondary flex items-center gap-2 text-base px-8 py-4">
+              Get Started
+              <ChevronRight className="w-4 h-4" />
             </Link>
+          </motion.div>
+
+          {/* Audience pills */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4, duration: 0.6 }}
+            className="flex flex-wrap items-center justify-center gap-3 mt-6"
+          >
+            {[
+              { label: 'For Students', color: 'bg-aura-purple/20 text-aura-purple-light border-aura-purple/30' },
+              { label: 'For Companies', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' },
+              { label: 'For Universities', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
+            ].map((p) => (
+              <span key={p.label} className={`px-3 py-1 rounded-full text-xs font-medium border ${p.color}`}>
+                {p.label}
+              </span>
+            ))}
           </motion.div>
 
           {/* Sample Aura Score teaser */}
@@ -250,8 +352,78 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Ecosystem: For Everyone ────────────────────────── */}
+      <section className="py-24 px-4" style={{ backgroundColor: 'rgb(var(--c-surf) / 0.4)' }}>
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial="hidden" whileInView="show" viewport={{ once: true }}
+            variants={fadeUp}
+            className="text-center mb-16"
+          >
+            <p className="section-label mb-4">Built for the entire ecosystem</p>
+            <h2 className="text-4xl sm:text-5xl font-bold" style={{ color: 'rgb(var(--c-text))' }}>
+              One Platform,{' '}
+              <span className="gradient-text">Three Dashboards</span>
+            </h2>
+            <p className="mt-4 max-w-2xl mx-auto text-base" style={{ color: 'rgb(var(--c-muted))' }}>
+              Whether you're a student building your career, a company looking for top talent,
+              or a university tracking placement outcomes — Aura-Audit has a purpose-built dashboard for you.
+            </p>
+          </motion.div>
+
+          <div className="grid lg:grid-cols-3 gap-8">
+            {ECOSYSTEM.map((eco, i) => (
+              <motion.div
+                key={eco.role}
+                initial="hidden"
+                whileInView="show"
+                viewport={{ once: true }}
+                variants={fadeUp}
+                transition={{ delay: i * 0.12 }}
+                className={`glass-card p-6 flex flex-col border ${eco.border} ${eco.bg} hover:shadow-lg transition-all duration-300`}
+              >
+                {/* Header */}
+                <div className="flex items-start justify-between mb-4">
+                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${eco.gradient} flex items-center justify-center text-white`}>
+                    {eco.icon}
+                  </div>
+                  <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${eco.badge.color}`}>
+                    {eco.badge.label}
+                  </span>
+                </div>
+
+                <h3 className="text-xl font-black mb-1" style={{ color: 'rgb(var(--c-text))' }}>{eco.role}</h3>
+                <p className="text-sm font-medium mb-3" style={{ color: 'rgb(var(--c-mutl))' }}>{eco.tagline}</p>
+                <p className="text-sm leading-relaxed mb-6" style={{ color: 'rgb(var(--c-muted))' }}>{eco.description}</p>
+
+                {/* Feature list */}
+                <div className="flex-1 grid grid-cols-1 gap-2 mb-6">
+                  {eco.features.map((feat) => (
+                    <div key={feat.label} className="flex items-center gap-2.5">
+                      <div className="w-5 h-5 rounded-md bg-white/5 flex items-center justify-center text-aura-muted shrink-0">
+                        {feat.icon}
+                      </div>
+                      <span className="text-xs" style={{ color: 'rgb(var(--c-muted))' }}>{feat.label}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* CTA */}
+                <Link
+                  href={eco.href}
+                  className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold transition-all duration-200 bg-gradient-to-r ${eco.gradient} text-white hover:opacity-90 hover:scale-[1.02]`}
+                >
+                  {eco.cta}
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── How It Works ──────────────────────────────────── */}
-      <section className="py-24 px-4" style={{ backgroundColor: 'rgb(var(--c-surf) / 0.5)' }}>
+      <section className="py-24 px-4">
         <div className="max-w-5xl mx-auto">
           <motion.div
             initial="hidden" whileInView="show" viewport={{ once: true }}
@@ -290,6 +462,45 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Social Proof / Trust ───────────────────────────── */}
+      <section className="py-16 px-4 border-y border-aura-border" style={{ backgroundColor: 'rgb(var(--c-surf) / 0.3)' }}>
+        <div className="max-w-5xl mx-auto">
+          <motion.div
+            initial="hidden" whileInView="show" viewport={{ once: true }}
+            variants={fadeUp}
+            className="text-center mb-10"
+          >
+            <p className="section-label mb-2">Why developers choose us</p>
+            <h2 className="text-2xl font-bold" style={{ color: 'rgb(var(--c-text))' }}>
+              Built to win hackathons. <span className="gradient-text">Designed for careers.</span>
+            </h2>
+          </motion.div>
+          <div className="grid sm:grid-cols-3 gap-6">
+            {[
+              { icon: <Shield className="w-5 h-5" />, title: 'Privacy First', desc: 'Your PDF is deleted from our servers immediately after analysis. We never sell your data.' },
+              { icon: <Zap className="w-5 h-5" />, title: '30-Second Audit', desc: 'Gemini 1.5 Flash gives you a full audit in under 60 seconds — faster than any human recruiter.' },
+              { icon: <TrendingUp className="w-5 h-5" />, title: 'Real Market Data', desc: 'Career recommendations are backed by live job market signals, not static templates.' },
+            ].map((item, i) => (
+              <motion.div
+                key={item.title}
+                initial="hidden" whileInView="show" viewport={{ once: true }}
+                variants={fadeUp}
+                transition={{ delay: i * 0.1 }}
+                className="glass-card p-5 flex gap-4 items-start"
+              >
+                <div className="w-10 h-10 rounded-xl bg-aura-purple/10 flex items-center justify-center text-aura-purple-light shrink-0">
+                  {item.icon}
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm mb-1" style={{ color: 'rgb(var(--c-text))' }}>{item.title}</h4>
+                  <p className="text-xs leading-relaxed" style={{ color: 'rgb(var(--c-muted))' }}>{item.desc}</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── CTA Banner ─────────────────────────────────────── */}
       <section className="py-24 px-4">
         <div className="max-w-3xl mx-auto text-center">
@@ -308,10 +519,15 @@ export default function LandingPage() {
               <p className="mb-8 text-lg" style={{ color: 'rgb(var(--c-muted))' }}>
                 Free forever. No credit card. Privacy-first — your PDF is deleted after analysis.
               </p>
-              <Link href="/upload" className="btn-primary inline-flex items-center gap-2 text-base px-8 py-4">
-                Get My Aura Score
-                <ArrowRight className="w-5 h-5" />
-              </Link>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Link href="/upload" className="btn-primary inline-flex items-center gap-2 text-base px-8 py-4">
+                  Get My Aura Score
+                  <ArrowRight className="w-5 h-5" />
+                </Link>
+                <Link href="/auth?tab=signup" className="btn-secondary inline-flex items-center gap-2 text-base px-8 py-4">
+                  Create Free Account
+                </Link>
+              </div>
             </div>
           </motion.div>
         </div>
@@ -327,10 +543,12 @@ export default function LandingPage() {
               </div>
               <span className="font-black text-sm" style={{ color: 'rgb(var(--c-text))' }}>Aura-Audit</span>
             </div>
-            <div className="flex items-center gap-6 text-sm" style={{ color: 'rgb(var(--c-muted))' }}>
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm" style={{ color: 'rgb(var(--c-muted))' }}>
               <Link href="/upload" className="hover:text-aura-purple-light transition-colors">Audit Resume</Link>
+              <Link href="/auth?tab=signup&role=student" className="hover:text-aura-purple-light transition-colors">Students</Link>
+              <Link href="/auth?tab=signup&role=company" className="hover:text-aura-purple-light transition-colors">Companies</Link>
+              <Link href="/auth?tab=signup&role=tpo" className="hover:text-aura-purple-light transition-colors">Universities</Link>
               <Link href="/auth" className="hover:text-aura-purple-light transition-colors">Sign In</Link>
-              <Link href="/auth?tab=signup" className="hover:text-aura-purple-light transition-colors">Sign Up</Link>
             </div>
             <a
               href="https://github.com/SagarSwain05/Aura-Audit"
