@@ -78,7 +78,7 @@ function AuthForm() {
   }
 
   return (
-    <div className="min-h-screen bg-aura-bg flex items-center justify-center px-4 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden" style={{ backgroundColor: 'rgb(var(--c-bg))' }}>
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-aura-purple/10 rounded-full blur-[120px] pointer-events-none" />
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md relative z-10">
@@ -89,7 +89,7 @@ function AuthForm() {
             </div>
             <span className="font-black text-xl">Aura<span className="gradient-text">-Audit</span></span>
           </Link>
-          <h1 className="text-2xl font-bold mb-2">
+          <h1 className="text-2xl font-bold mb-2" style={{ color: 'rgb(var(--c-text))' }}>
             {tab === 'login' ? 'Welcome back' : 'Start your journey'}
           </h1>
           <p className="text-aura-muted text-sm">
@@ -213,7 +213,7 @@ function AuthForm() {
 
 export default function AuthPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-aura-bg" />}>
+    <Suspense fallback={<div className="min-h-screen" style={{ backgroundColor: 'rgb(var(--c-bg))' }} />}>
       <AuthForm />
     </Suspense>
   )
