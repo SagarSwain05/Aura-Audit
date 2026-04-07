@@ -2,6 +2,8 @@ const axios = require('axios');
 const FormData = require('form-data');
 const Audit = require('../models/Audit');
 const User = require('../models/User');
+const Student = require('../models/Student');
+const Notification = require('../models/Notification');
 const { cloudinary } = require('../middleware/upload');
 
 const AI_ENGINE_URL = process.env.AI_ENGINE_URL || 'http://localhost:8000';
@@ -81,6 +83,45 @@ async function processAuditAsync(audit, file, dreamRole) {
       $inc: { totalAudits: 1 },
       $max: { bestAuraScore: score },
     });
+
+    // Award career points to Student profile based on Aura Score
+    const student = await Student.findOne({ userId: audit.user });
+    if (student) {
+      // Points: base 20 + bonus for score tiers
+      let points = 20;
+      let reason = `Resume Audit — Aura Score ${score}`;
+      if (score >= 80) { points = 50; reason = `Excellent Audit — Aura Score ${score} 🎉`; }
+      else if (score >= 60) { points = 35; reason = `Good Audit — Aura Score ${score}`; }
+
+      student.careerPoints.total += points;
+      student.careerPoints.history.push({ points, reason });
+
+      // Auto-add extracted skills to student profile if they don't exist
+      const extractedSkills = data.extracted_skills || [];
+      for (const skill of extractedSkills.slice(0, 5)) {
+        const skillName = typeof skill === 'string' ? skill : skill.name;
+        if (skillName && !student.skills.find(s => s.name.toLowerCase() === skillName.toLowerCase())) {
+          student.skills.push({ name: skillName, level: 'intermediate' });
+        }
+      }
+      student.calculateCareerReadinessScore();
+      await student.save();
+
+      // Create notification
+      const notif = await Notification.create({
+        user: audit.user,
+        type: 'assessment_result',
+        title: `Audit Complete — Score ${score}/100`,
+        message: `Your resume scored ${score}/100. You earned ${points} career points! ${score >= 80 ? '🎉 Excellent work!' : score >= 60 ? '👍 Good effort!' : '💪 Keep improving!'}`,
+        link: `/audit/${audit._id}`,
+      });
+
+      // Emit real-time notification via Socket.IO
+      if (global.emitToUser) {
+        global.emitToUser(audit.user.toString(), 'notification', notif);
+        global.emitAuditUpdate(audit._id.toString(), { status: 'completed', score, points });
+      }
+    }
 
   } catch (err) {
     throw err;
