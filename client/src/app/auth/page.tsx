@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Zap, Eye, EyeOff, ArrowRight, Loader2, GraduationCap, Building2, University } from 'lucide-react'
+import { Zap, Eye, EyeOff, ArrowRight, Loader2, GraduationCap, Building2, University, Mail, RotateCcw } from 'lucide-react'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { authApi } from '@/lib/api'
@@ -39,36 +39,63 @@ function AuthForm() {
     name: '', email: '', password: '', dreamRole: '', universityName: '', companyName: '',
   })
 
-  // If already logged in, redirect to dashboard
-  useEffect(() => {
-    setHydrated(true)
-  }, [])
+  // OTP verification step
+  const [otpStep, setOtpStep] = useState(false)
+  const [pendingEmail, setPendingEmail] = useState('')
+  const [otp, setOtp] = useState('')
+  const [resendCooldown, setResendCooldown] = useState(0)
+
+  useEffect(() => { setHydrated(true) }, [])
   useEffect(() => {
     if (hydrated && user) {
       router.replace(ROLE_REDIRECTS[user.role as Role] || '/student/home')
     }
   }, [hydrated, user, router])
 
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    const t = setInterval(() => setResendCooldown((c) => c - 1), 1000)
+    return () => clearInterval(t)
+  }, [resendCooldown])
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value })
   }
 
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!isValidEmail(form.email)) {
+      toast.error('Please enter a valid email address (e.g. you@example.com)')
+      return
+    }
+    if (tab === 'signup' && form.password.length < 8) {
+      toast.error('Password must be at least 8 characters')
+      return
+    }
     setLoading(true)
     try {
       let res
       if (tab === 'signup') {
         res = await authApi.register({ ...form, role })
+        if (res.data.pendingVerification) {
+          setPendingEmail(form.email)
+          setOtpStep(true)
+          setResendCooldown(60)
+          toast.success('Check your email for the verification code!')
+          return
+        }
       } else {
         res = await authApi.login({ email: form.email, password: form.password })
+        const { token, user: loggedUser } = res.data
+        setToken(token)
+        setUser(loggedUser)
+        toast.success('Welcome back!')
+        const userRole = loggedUser.role as Role
+        router.push(ROLE_REDIRECTS[userRole] || '/upload')
       }
-      const { token, user } = res.data
-      setToken(token)
-      setUser(user)
-      toast.success(`Welcome${tab === 'signup' ? ', ' + user.name : ' back'}!`)
-      const userRole = user.role as Role
-      router.push(ROLE_REDIRECTS[userRole] || '/upload')
     } catch (err: unknown) {
       const error = err as { response?: { data?: { message?: string } } }
       toast.error(error.response?.data?.message || 'Something went wrong')
@@ -77,6 +104,117 @@ function AuthForm() {
     }
   }
 
+  const handleVerifyOTP = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (otp.length !== 6) {
+      toast.error('Please enter the 6-digit code')
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await authApi.verifyEmail({ email: pendingEmail, otp })
+      const { token, user: verifiedUser } = res.data
+      setToken(token)
+      setUser(verifiedUser)
+      toast.success('Email verified! Welcome to Aura-Audit 🎉')
+      const userRole = verifiedUser.role as Role
+      router.push(ROLE_REDIRECTS[userRole] || '/upload')
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { message?: string } } }
+      toast.error(error.response?.data?.message || 'Invalid or expired code')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleResendOTP = async () => {
+    if (resendCooldown > 0) return
+    setLoading(true)
+    try {
+      await authApi.resendOTP({ email: pendingEmail })
+      toast.success('New code sent to your email!')
+      setResendCooldown(60)
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { message?: string } } }
+      toast.error(error.response?.data?.message || 'Failed to resend code')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── OTP verification screen ───────────────────────────────────────────────
+  if (otpStep) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden" style={{ backgroundColor: 'rgb(var(--c-bg))' }}>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-aura-purple/10 rounded-full blur-[120px] pointer-events-none" />
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md relative z-10">
+          <div className="text-center mb-8">
+            <Link href="/" className="inline-flex items-center gap-2 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-aura-gradient flex items-center justify-center shadow-glow-purple">
+                <Zap className="w-5 h-5 text-white" />
+              </div>
+              <span className="font-black text-xl">Aura<span className="gradient-text">-Audit</span></span>
+            </Link>
+            <div className="w-16 h-16 rounded-2xl bg-aura-purple/15 border border-aura-purple/30 flex items-center justify-center mx-auto mb-4">
+              <Mail className="w-8 h-8 text-aura-purple-light" />
+            </div>
+            <h1 className="text-2xl font-bold mb-2" style={{ color: 'rgb(var(--c-text))' }}>Check your email</h1>
+            <p className="text-aura-muted text-sm">
+              We sent a 6-digit code to <span className="text-aura-text font-medium">{pendingEmail}</span>
+            </p>
+          </div>
+
+          <form onSubmit={handleVerifyOTP} className="glass-card p-6 space-y-5">
+            <div>
+              <label className="text-sm text-aura-muted-light mb-1.5 block">Verification Code</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                className="input-field text-center text-2xl font-bold tracking-[0.5em] py-4"
+                autoFocus
+              />
+              <p className="text-xs text-aura-muted mt-1.5">Code expires in 10 minutes</p>
+            </div>
+
+            <button type="submit" disabled={loading || otp.length !== 6} className="btn-primary w-full flex items-center justify-center gap-2 py-3.5">
+              {loading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <>Verify Email <ArrowRight className="w-4 h-4" /></>
+              )}
+            </button>
+
+            <div className="flex items-center justify-between pt-1">
+              <button
+                type="button"
+                onClick={() => { setOtpStep(false); setOtp('') }}
+                className="text-sm text-aura-muted hover:text-aura-text transition-colors"
+              >
+                ← Back to signup
+              </button>
+              <button
+                type="button"
+                onClick={handleResendOTP}
+                disabled={resendCooldown > 0 || loading}
+                className="flex items-center gap-1.5 text-sm text-aura-purple-light hover:underline disabled:opacity-50 disabled:no-underline transition-all"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
+              </button>
+            </div>
+          </form>
+        </motion.div>
+      </div>
+    )
+  }
+
+  // ── Main auth form ────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden" style={{ backgroundColor: 'rgb(var(--c-bg))' }}>
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-aura-purple/10 rounded-full blur-[120px] pointer-events-none" />
@@ -160,7 +298,7 @@ function AuthForm() {
           <div>
             <label className="text-sm text-aura-muted-light mb-1.5 block">Password</label>
             <div className="relative">
-              <input name="password" type={showPwd ? 'text' : 'password'} placeholder="••••••••" value={form.password} onChange={handleChange} required minLength={6} className="input-field pr-10" />
+              <input name="password" type={showPwd ? 'text' : 'password'} placeholder="Min 8 characters" value={form.password} onChange={handleChange} required minLength={8} className="input-field pr-10" />
               <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-aura-muted hover:text-aura-text">
                 {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -188,12 +326,19 @@ function AuthForm() {
             </div>
           )}
 
+          {tab === 'signup' && (
+            <p className="text-xs text-aura-muted flex items-center gap-1.5">
+              <Mail className="w-3.5 h-3.5 text-aura-purple-light" />
+              A verification code will be sent to your email
+            </p>
+          )}
+
           <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 py-3.5 mt-2">
             {loading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
               <>
-                {tab === 'login' ? 'Sign In' : 'Create Account'}
+                {tab === 'login' ? 'Sign In' : 'Send Verification Code'}
                 <ArrowRight className="w-4 h-4" />
               </>
             )}

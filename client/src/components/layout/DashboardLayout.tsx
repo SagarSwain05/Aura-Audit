@@ -91,6 +91,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => { setHydrated(true) }, [])
   useEffect(() => { if (!hydrated) return; if (!user) router.push('/auth') }, [user, router, hydrated])
 
+  // Role-path guard: redirect users to their correct dashboard if on wrong section
+  useEffect(() => {
+    if (!hydrated || !user) return
+    const userRole = user.role as string
+    if (userRole === 'company' && !pathname.startsWith('/company')) {
+      router.replace('/company/home')
+    } else if (userRole === 'tpo' && !pathname.startsWith('/tpo')) {
+      router.replace('/tpo/home')
+    }
+    // Students can access /student/*, /upload, /audit/*, /dashboard
+  }, [hydrated, user, pathname, router])
+
   useEffect(() => {
     if (!user) return
     notificationsApi.getAll().then((r) => {

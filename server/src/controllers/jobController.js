@@ -127,6 +127,7 @@ exports.applyJob = async (req, res) => {
 // GET /api/jobs/my-applications  (student)
 exports.getMyApplications = async (req, res) => {
   const student = await Student.findOne({ userId: req.user._id });
+  if (!student) return res.json({ applications: [] });
   const applications = await JobApplication.find({ student: student._id })
     .populate('job', 'title location type salary')
     .populate('company', 'name logo')
@@ -228,7 +229,7 @@ exports.getRecommendedJobs = async (req, res) => {
       cgpa: student.cgpa,
       min_score: 30,
       limit: 20,
-    });
+    }, { timeout: 12000 }); // 12s timeout — don't block on slow AI engine
     matchResults = aiRes.data.matches || [];
   } catch {}
 

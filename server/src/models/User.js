@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true },
-  password: { type: String, required: true, minlength: 6 },
+  password: { type: String, required: true, minlength: 8 },
   role: { type: String, enum: ['student', 'tpo', 'company', 'admin'], default: 'student' },
   university: { type: mongoose.Schema.Types.ObjectId, ref: 'University' },
   dreamRole: { type: String, default: '' },
@@ -14,6 +14,9 @@ const userSchema = new mongoose.Schema({
   githubUrl: { type: String, default: '' },
   totalAudits: { type: Number, default: 0 },
   bestAuraScore: { type: Number, default: 0 },
+  isEmailVerified: { type: Boolean, default: false },
+  emailOTP: { type: String, default: null },
+  emailOTPExpiry: { type: Date, default: null },
 }, { timestamps: true });
 
 // Hash password before save

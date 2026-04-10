@@ -59,20 +59,26 @@ export default function JobsPage() {
   const [applying, setApplying] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([
+    Promise.allSettled([
       jobsApi.getJobs(),
       jobsApi.getRecommended(),
       jobsApi.getMyApplications(),
     ]).then(([allRes, recRes, appsRes]) => {
-      setJobs(allRes.data.jobs || [])
-      setRecommended(recRes.data.jobs || recRes.data.recommendations || [])
-      const appIds = new Set<string>(
-        (appsRes.data.applications || []).map((a: { job: { _id: string } | string }) =>
-          typeof a.job === 'string' ? a.job : a.job?._id
+      if (allRes.status === 'fulfilled') {
+        setJobs(allRes.value.data.jobs || [])
+      }
+      if (recRes.status === 'fulfilled') {
+        setRecommended(recRes.value.data.jobs || recRes.value.data.recommendations || [])
+      }
+      if (appsRes.status === 'fulfilled') {
+        const appIds = new Set<string>(
+          (appsRes.value.data.applications || []).map((a: { job: { _id: string } | string }) =>
+            typeof a.job === 'string' ? a.job : a.job?._id
+          )
         )
-      )
-      setApplied(appIds)
-    }).catch(() => {}).finally(() => setLoading(false))
+        setApplied(appIds)
+      }
+    }).finally(() => setLoading(false))
   }, [])
 
   const fetchLiveJobs = async () => {
