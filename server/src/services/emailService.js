@@ -9,8 +9,9 @@ function getTransporter() {
   // Explicit Gmail SMTP config — more reliable than service:'gmail' shorthand
   transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,          // SSL on port 465
+    port: 587,
+    secure: false,         // STARTTLS on port 587
+    requireTLS: true,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS.replace(/\s+/g, ''), // strip spaces just in case
