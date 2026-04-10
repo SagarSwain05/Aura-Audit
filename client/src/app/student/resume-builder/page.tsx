@@ -308,7 +308,7 @@ export default function ResumeBuilderPage() {
               {([['name','Full Name','text'],['email','Email','email'],['phone','Phone','tel'],['location','Location','text'],['linkedin','LinkedIn URL','url'],['github','GitHub URL','url']] as [keyof ResumeData, string, string][]).map(([field, label, type]) => (
                 <div key={field}>
                   <label className="text-sm text-aura-muted-light mb-1.5 block">{label}</label>
-                  <input type={type} value={(data as Record<string, unknown>)[field] as string || ''}
+                  <input type={type} value={(data as unknown as Record<string, string>)[field] || ''}
                     onChange={(e) => upd(field, e.target.value)} className="input-field" />
                 </div>
               ))}
