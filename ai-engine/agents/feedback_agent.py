@@ -17,15 +17,15 @@ Weak areas: {weak_areas}
 
 Return ONLY valid JSON:
 {{
-  "personalized_message": "<2-3 sentences warm and specific>",
+  "personalizedMessage": "<2-3 sentences warm and specific>",
   "strengths": ["strength1", "strength2", "strength3"],
-  "areas_for_improvement": ["area1", "area2"],
+  "areasForImprovement": ["area1", "area2"],
   "recommendations": [
     {{"topic": "...", "resource_type": "video|article|project|course", "description": "...", "priority": "high|medium|low"}}
   ],
-  "next_steps": ["step1", "step2", "step3"],
-  "estimated_readiness_days": 30,
-  "motivational_quote": "<relevant short quote>"
+  "nextSteps": ["step1", "step2", "step3"],
+  "estimatedReadinessDays": 30,
+  "motivationalQuote": "<relevant short quote>"
 }}"""
 
 
@@ -35,22 +35,32 @@ async def generate_feedback(skill, current_level, target_level, evaluation_resul
     prompt = FEEDBACK_PROMPT.format(
         skill=skill, current_level=current_level, target_level=target_level,
         score=evaluation_result.get("percentage", 0),
-        total_score=evaluation_result.get("total_score", 0),
-        total_points=evaluation_result.get("total_points", 100),
+        total_score=evaluation_result.get("totalScore", evaluation_result.get("total_score", 0)),
+        total_points=evaluation_result.get("totalPoints", evaluation_result.get("total_points", 100)),
         passed=evaluation_result.get("passed", False),
-        correct=evaluation_result.get("correct_count", 0),
-        total=evaluation_result.get("total_questions", 10),
+        correct=evaluation_result.get("correctCount", evaluation_result.get("correct_count", 0)),
+        total=evaluation_result.get("totalQuestions", evaluation_result.get("total_questions", 10)),
         weak_areas=weak_areas or ["general improvement needed"],
     )
     try:
-        return await llm_generate_json(prompt)
+        result = await llm_generate_json(prompt)
+        # Normalize: support both camelCase and snake_case from LLM
+        return {
+            "personalizedMessage": result.get("personalizedMessage") or result.get("personalized_message", ""),
+            "strengths": result.get("strengths", []),
+            "areasForImprovement": result.get("areasForImprovement") or result.get("areas_for_improvement", []),
+            "recommendations": result.get("recommendations", []),
+            "nextSteps": result.get("nextSteps") or result.get("next_steps", []),
+            "estimatedReadinessDays": result.get("estimatedReadinessDays") or result.get("estimated_readiness_days", 30),
+            "motivationalQuote": result.get("motivationalQuote") or result.get("motivational_quote", ""),
+        }
     except Exception:
         return {
-            "personalized_message": f"You scored {evaluation_result.get('percentage', 0)}% on {skill}. Keep practicing!",
+            "personalizedMessage": f"You scored {evaluation_result.get('percentage', 0)}% on {skill}. Keep practicing!",
             "strengths": ["Attempted all questions", "Shows initiative"],
-            "areas_for_improvement": weak_areas or ["Practice more problems"],
+            "areasForImprovement": weak_areas or ["Practice more problems"],
             "recommendations": [{"topic": skill, "resource_type": "video", "description": f"Watch tutorials on {skill}", "priority": "high"}],
-            "next_steps": [f"Review {skill} fundamentals", "Practice on LeetCode", "Build a small project"],
-            "estimated_readiness_days": 30,
-            "motivational_quote": "Every expert was once a beginner.",
+            "nextSteps": [f"Review {skill} fundamentals", "Practice on LeetCode", "Build a small project"],
+            "estimatedReadinessDays": 30,
+            "motivationalQuote": "Every expert was once a beginner.",
         }

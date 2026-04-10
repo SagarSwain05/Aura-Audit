@@ -34,11 +34,11 @@ async def generate(req: GenerateRequest):
 async def evaluate(req: EvaluateRequest):
     try:
         result = await evaluate_assessment(req.questions, req.answers)
-        # Extract weak areas from results
+        # Extract weak areas from results (evaluation_agent now returns camelCase)
         weak = [
-            r.get("missed_points", [r.get("feedback", "")[:40]])
+            r.get("missedPoints", [r.get("feedback", "")[:40]])
             for r in result.get("results", [])
-            if not r.get("is_correct")
+            if not r.get("isCorrect")
         ]
         flat_weak = [item for sub in weak for item in (sub if isinstance(sub, list) else [sub])][:5]
 

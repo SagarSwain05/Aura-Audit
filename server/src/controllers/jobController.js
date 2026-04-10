@@ -234,11 +234,36 @@ exports.getRecommendedJobs = async (req, res) => {
   } catch {}
 
   if (!matchResults.length) {
-    // Fallback: return latest active jobs
+    // Fallback: keyword-score jobs against student skills + dreamRole
+    const studentSkillNames = student.skills.map(s => s.name.toLowerCase());
+    const dreamRole = (student.dreamRole || '').toLowerCase();
     const jobs = await Job.find({ status: 'active' })
       .populate('company', 'name logo location industry isVerified')
-      .sort({ createdAt: -1 }).limit(10);
-    return res.json({ jobs: jobs.map(j => ({ ...j.toObject(), match_score: 0 })) });
+      .sort({ createdAt: -1 }).limit(50);
+
+    const scored = jobs.map(j => {
+      const titleLower = (j.title || '').toLowerCase();
+      const descLower  = (j.description || '').toLowerCase();
+      const jobSkills  = (j.skills || []).map(s => s.toLowerCase());
+
+      // Count matching skills
+      const matchedSkills = studentSkillNames.filter(sk => jobSkills.includes(sk) || descLower.includes(sk));
+      const skillScore = Math.min(matchedSkills.length * 15, 60);
+
+      // Dream role match bonus
+      const roleScore = dreamRole && titleLower.includes(dreamRole.split(' ')[0]) ? 25 : 0;
+
+      // Recency bonus (newer = slightly higher)
+      const ageMs = Date.now() - new Date(j.createdAt).getTime();
+      const recencyScore = Math.max(0, 15 - Math.floor(ageMs / (1000 * 60 * 60 * 24)));
+
+      const matchScore = Math.min(skillScore + roleScore + recencyScore, 99);
+      return { ...j.toObject(), match_score: matchScore, matched_skills: matchedSkills };
+    })
+      .sort((a, b) => b.match_score - a.match_score)
+      .slice(0, 20);
+
+    return res.json({ jobs: scored });
   }
 
   const jobIds = matchResults.map(m => m.job_id);

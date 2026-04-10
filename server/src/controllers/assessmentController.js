@@ -58,18 +58,29 @@ exports.submitAssessment = async (req, res) => {
   });
 
   const { evaluation, feedback } = aiRes.data;
-  assessment.evaluationResult = evaluation;
+  // Normalize evaluation keys: support both camelCase (new) and snake_case (legacy)
+  const evalResult = {
+    totalScore:     evaluation.totalScore     ?? evaluation.total_score     ?? 0,
+    totalPoints:    evaluation.totalPoints    ?? evaluation.total_points    ?? 100,
+    percentage:     evaluation.percentage     ?? 0,
+    passed:         evaluation.passed         ?? false,
+    passThreshold:  evaluation.passThreshold  ?? evaluation.pass_threshold  ?? 70,
+    results:        evaluation.results        ?? [],
+    correctCount:   evaluation.correctCount   ?? evaluation.correct_count   ?? 0,
+    totalQuestions: evaluation.totalQuestions ?? evaluation.total_questions ?? 0,
+  };
+  assessment.evaluationResult = evalResult;
   assessment.feedback = feedback;
   assessment.status = 'evaluated';
   assessment.evaluatedAt = new Date();
 
   // Award career points
   const student = await Student.findById(assessment.student);
-  const points = evaluation.passed ? 50 : 20;
+  const points = evalResult.passed ? 50 : 20;
   student.careerPoints.total += points;
-  student.careerPoints.history.push({ points, reason: `Assessment: ${assessment.skill} (${evaluation.percentage}%)` });
-  student.activityStats.certificationsEarned += evaluation.passed ? 1 : 0;
-  if (evaluation.passed) {
+  student.careerPoints.history.push({ points, reason: `Assessment: ${assessment.skill} (${evalResult.percentage}%)` });
+  student.activityStats.certificationsEarned += evalResult.passed ? 1 : 0;
+  if (evalResult.passed) {
     assessment.certificateIssued = true;
     student.certifications.push({
       name: `${assessment.skill} — ${assessment.targetLevel.charAt(0).toUpperCase() + assessment.targetLevel.slice(1)} Level`,
@@ -85,11 +96,11 @@ exports.submitAssessment = async (req, res) => {
     user: req.user._id,
     type: 'assessment_result',
     title: `Assessment Result: ${assessment.skill}`,
-    message: `You scored ${evaluation.percentage}%${evaluation.passed ? ' — Certificate issued!' : '. Keep practising!'}`,
+    message: `You scored ${evalResult.percentage}%${evalResult.passed ? ' — Certificate issued!' : '. Keep practising!'}`,
     link: `/dashboard/student/assessments`,
   });
 
-  res.json({ assessment, evaluation, feedback });
+  res.json({ assessment, evaluation: evalResult, feedback });
 };
 
 // GET /api/assessment

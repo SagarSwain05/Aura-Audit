@@ -3,12 +3,13 @@ AI Assessment Question Generator Agent.
 Uses unified llm_client (Gemini pool → Groq fallback).
 """
 
-import json, re, asyncio
+import json, re, asyncio, random
 from services.llm_client import llm_generate_json
 
 PROMPT_TEMPLATE = """You are an expert technical interviewer and educator.
-Generate EXACTLY 10 assessment questions for the skill: "{skill}"
+Generate EXACTLY 10 UNIQUE and VARIED assessment questions for the skill: "{skill}"
 Current level: {current_level} → Target level: {target_level}
+Variation seed: {variation_seed} — use this to ensure questions are different from previous sets.
 
 Question distribution (STRICT):
 - 3 MCQ (10 pts each = 30 pts)
@@ -23,6 +24,7 @@ Rules:
 - MCQ must have exactly 4 options (A/B/C/D)
 - Include explanation for every correct answer
 - Scale difficulty from {current_level} to {target_level}
+- Cover DIFFERENT subtopics each time — vary the angle, scenario, and concept tested
 
 Return ONLY valid JSON:
 {{
@@ -70,8 +72,10 @@ Return ONLY valid JSON:
 
 
 async def generate_questions(skill: str, current_level: str, target_level: str) -> dict:
+    variation_seed = random.randint(1000, 9999)
     prompt = PROMPT_TEMPLATE.format(
-        skill=skill, current_level=current_level, target_level=target_level
+        skill=skill, current_level=current_level, target_level=target_level,
+        variation_seed=variation_seed,
     )
     data = await llm_generate_json(prompt)
     questions = data.get("questions", [])[:10]

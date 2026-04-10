@@ -29,14 +29,14 @@ interface Assessment {
     percentage: number
     passed: boolean
     totalScore: number
-    results: { questionId: string; isCorrect: boolean; score: number; feedback: string }[]
+    results: { questionId: string; isCorrect: boolean; score: number; feedback: string; correctAnswer?: string }[]
   }
   feedback?: {
     strengths: string[]
-    areas_for_improvement: string[]
+    areasForImprovement: string[]
     recommendations: string[]
     motivationalQuote: string
-    estimated_readiness_days: number
+    estimatedReadinessDays: number
   }
   certificateIssued: boolean
   createdAt: string
@@ -167,13 +167,13 @@ export default function AssessmentDetailPage() {
                 </ul>
               </div>
             )}
-            {fb.areas_for_improvement?.length > 0 && (
+            {fb.areasForImprovement?.length > 0 && (
               <div className="glass-card p-5">
                 <h3 className="font-semibold mb-3 text-yellow-400 flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4" /> Improve
                 </h3>
                 <ul className="space-y-2">
-                  {fb.areas_for_improvement.map((s, i) => (
+                  {fb.areasForImprovement.map((s, i) => (
                     <li key={i} className="text-sm text-aura-muted-light flex items-start gap-2">
                       <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 mt-1.5 flex-shrink-0" />
                       {s}
@@ -195,7 +195,7 @@ export default function AssessmentDetailPage() {
           <h3 className="font-semibold mb-4">Question Breakdown</h3>
           <div className="space-y-2.5">
             {questions.map((qItem, i) => {
-              const r = results?.find((x) => x.questionId === qItem.id)
+              const r = results?.find((x) => String(x.questionId) === String(qItem.id))
               return (
                 <div key={qItem.id} className={`flex items-start gap-3 p-3.5 rounded-xl ${r?.isCorrect ? 'bg-emerald-400/5 border border-emerald-400/10' : 'bg-red-400/5 border border-red-400/10'}`}>
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${r?.isCorrect ? 'bg-emerald-400/20' : 'bg-red-400/20'}`}>
@@ -206,6 +206,11 @@ export default function AssessmentDetailPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">Q{i + 1}: {qItem.question.slice(0, 100)}{qItem.question.length > 100 ? '...' : ''}</p>
                     {r?.feedback && <p className="text-xs text-aura-muted mt-1">{r.feedback}</p>}
+                    {!r?.isCorrect && (r as any)?.correctAnswer && (
+                      <p className="text-xs text-emerald-400/80 mt-1">
+                        Correct: <span className="font-medium">{(r as any).correctAnswer}</span>
+                      </p>
+                    )}
                   </div>
                   <span className="text-sm font-bold flex-shrink-0">{r?.score ?? 0}/{qItem.points}</span>
                 </div>
