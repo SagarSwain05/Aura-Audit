@@ -1,32 +1,25 @@
-const { Resend } = require('resend');
-
-let resend = null;
-
-function getResend() {
-  if (resend) return resend;
-  if (!process.env.RESEND_API_KEY) return null;
-  resend = new Resend(process.env.RESEND_API_KEY);
-  return resend;
-}
+const axios = require('axios');
 
 /**
  * Send an OTP email for email verification during signup.
- * Uses Resend HTTP API (works on Railway / any cloud — no SMTP port restrictions).
+ * Uses Brevo (formerly Sendinblue) HTTP API — works on any cloud,
+ * no SMTP port restrictions, no domain verification needed.
+ * Sender is the verified Brevo account email (sagar23swain@gmail.com).
  */
 exports.sendOTPEmail = async (toEmail, name, otp) => {
-  const client = getResend();
-
-  if (!client) {
-    console.warn('⚠️  RESEND_API_KEY not set — OTP logged to console only');
+  if (!process.env.BREVO_API_KEY) {
+    console.warn('⚠️  BREVO_API_KEY not set — OTP logged to console only');
     console.info(`📧  OTP for ${toEmail}: ${otp}`);
     throw new Error('EMAIL_NOT_CONFIGURED');
   }
 
-  const { error } = await client.emails.send({
-    from: 'Aura-Audit <onboarding@resend.dev>',
-    to: [toEmail],
+  const senderEmail = process.env.EMAIL_USER || 'sagar23swain@gmail.com';
+
+  const payload = {
+    sender: { name: 'Aura-Audit', email: senderEmail },
+    to: [{ email: toEmail, name }],
     subject: `Your Aura-Audit verification code: ${otp}`,
-    html: `
+    htmlContent: `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 480px; margin: 0 auto; background: #0f0f1a; border-radius: 16px; overflow: hidden; border: 1px solid rgba(124,58,237,0.3);">
         <div style="background: linear-gradient(135deg, #7C3AED, #06b6d4); padding: 32px 24px; text-align: center;">
           <h1 style="color: #fff; margin: 0; font-size: 24px; font-weight: 900; letter-spacing: -0.5px;">Aura-Audit ⚡</h1>
@@ -45,10 +38,23 @@ exports.sendOTPEmail = async (toEmail, name, otp) => {
         </div>
       </div>
     `,
-  });
+  };
 
-  if (error) {
-    console.error('📧 Resend error:', error);
-    throw new Error(error.message || 'Failed to send email');
+  const response = await axios.post(
+    'https://api.brevo.com/v3/smtp/email',
+    payload,
+    {
+      headers: {
+        'accept': 'application/json',
+        'api-key': process.env.BREVO_API_KEY,
+        'content-type': 'application/json',
+      },
+      timeout: 10000,
+    }
+  );
+
+  if (response.status !== 201 && response.status !== 200) {
+    console.error('📧 Brevo error:', response.data);
+    throw new Error('Email sending failed');
   }
 };
