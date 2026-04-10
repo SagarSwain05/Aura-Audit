@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'
 
-const api = axios.create({ baseURL: BASE, withCredentials: true })
+const api = axios.create({ baseURL: BASE })
 
 // Auto-attach JWT + optional user Gemini key
 api.interceptors.request.use((config) => {
@@ -16,12 +16,16 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Auto-logout on 401
+// Auto-logout on 401 — but NOT for auth endpoints (login/register return 401 on bad creds,
+// we don't want to hard-redirect and lose the error toast/form state)
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401 && typeof window !== 'undefined') {
+    const isAuthEndpoint = err.config?.url?.startsWith('/api/auth/')
+    if (err.response?.status === 401 && !isAuthEndpoint && typeof window !== 'undefined') {
+      // Clear token AND persisted Zustand store so stale user object doesn't block the auth page
       localStorage.removeItem('aura_token')
+      localStorage.removeItem('aura-audit-store')
       window.location.href = '/auth'
     }
     return Promise.reject(err)
