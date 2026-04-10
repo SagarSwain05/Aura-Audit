@@ -40,6 +40,10 @@ export const authApi = {
   login: (data: { email: string; password: string }) => api.post('/api/auth/login', data),
   getMe: () => api.get('/api/auth/me'),
   updateProfile: (data: Record<string, string>) => api.put('/api/auth/profile', data),
+  changePassword: (data: { currentPassword: string; newPassword: string }) => api.put('/api/auth/password', data),
+  deleteAccount: () => api.delete('/api/auth/account'),
+  forgotPassword: (data: { email: string }) => api.post('/api/auth/forgot-password', data),
+  resetPassword: (data: { email: string; otp: string; newPassword: string }) => api.post('/api/auth/reset-password', data),
 }
 
 // ── Audit ──────────────────────────────────────────────

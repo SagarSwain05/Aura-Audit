@@ -1,9 +1,10 @@
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const Student = require('../models/Student');
 const Company = require('../models/Company');
 const University = require('../models/University');
-const { sendOTPEmail } = require('../services/emailService');
+const { sendOTPEmail, sendResetPasswordEmail } = require('../services/emailService');
 
 const signToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -167,4 +168,88 @@ exports.updateProfile = async (req, res) => {
     { new: true, runValidators: true }
   ).select('-password');
   res.json({ user });
+};
+
+// PUT /api/auth/password  (logged-in user, requires current password)
+exports.changePassword = async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: 'Current and new password are required' });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ message: 'New password must be at least 8 characters' });
+  }
+
+  const user = await User.findById(req.user._id);
+  const valid = await user.comparePassword(currentPassword);
+  if (!valid) return res.status(400).json({ message: 'Current password is incorrect' });
+
+  user.password = newPassword; // pre-save hook will hash it
+  await user.save({ validateBeforeSave: false });
+  res.json({ message: 'Password updated successfully' });
+};
+
+// DELETE /api/auth/account  (logged-in user, deletes all their data)
+exports.deleteAccount = async (req, res) => {
+  const userId = req.user._id;
+  const role = req.user.role;
+
+  await User.findByIdAndDelete(userId);
+  if (role === 'student') await Student.deleteOne({ userId });
+  else if (role === 'company') await Company.deleteOne({ userId });
+  else if (role === 'tpo') await University.deleteOne({ userId });
+
+  res.json({ message: 'Account deleted' });
+};
+
+// POST /api/auth/forgot-password  (send OTP to email)
+exports.forgotPassword = async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ message: 'Email is required' });
+
+  const user = await User.findOne({ email: email.trim().toLowerCase() });
+  // Always return success to prevent email enumeration attacks
+  if (!user) return res.json({ message: 'If that email exists, a reset code has been sent.' });
+
+  const otp = generateOTP();
+  user.emailOTP = otp;
+  user.emailOTPExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+  await user.save({ validateBeforeSave: false });
+
+  try {
+    await sendResetPasswordEmail(email, user.name, otp);
+  } catch (err) {
+    console.error('Reset email error:', err.message);
+    return res.status(502).json({ message: 'Failed to send reset email. Please try again.' });
+  }
+
+  res.json({ message: 'If that email exists, a reset code has been sent.' });
+};
+
+// POST /api/auth/reset-password  (verify OTP + set new password)
+exports.resetPassword = async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+  if (!email || !otp || !newPassword) {
+    return res.status(400).json({ message: 'Email, code, and new password are required' });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ message: 'Password must be at least 8 characters' });
+  }
+
+  const user = await User.findOne({ email: email.trim().toLowerCase() });
+  if (!user) return res.status(400).json({ message: 'Invalid or expired reset code' });
+
+  if (!user.emailOTP || user.emailOTP !== otp) {
+    return res.status(400).json({ message: 'Invalid reset code' });
+  }
+  if (user.emailOTPExpiry && user.emailOTPExpiry < new Date()) {
+    return res.status(400).json({ message: 'Reset code has expired. Please request a new one.' });
+  }
+
+  user.password = newPassword; // pre-save hook will hash it
+  user.emailOTP = null;
+  user.emailOTPExpiry = null;
+  await user.save({ validateBeforeSave: false });
+
+  res.json({ message: 'Password reset successfully. You can now sign in.' });
 };
