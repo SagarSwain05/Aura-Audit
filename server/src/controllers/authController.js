@@ -59,8 +59,26 @@ exports.register = async (req, res) => {
     await University.create({ userId: user._id, name: universityName || name, email, tpoContact: name, tpoEmail: email });
   }
 
-  // Send OTP email
-  await sendOTPEmail(email, name, otp);
+  // Send OTP email — roll back user+profile if it fails
+  try {
+    await sendOTPEmail(email, name, otp);
+  } catch (emailErr) {
+    // Roll back
+    await User.findByIdAndDelete(user._id);
+    if (role === 'student') await Student.deleteOne({ userId: user._id });
+    else if (role === 'company') await Company.deleteOne({ userId: user._id });
+    else if (role === 'tpo') await University.deleteOne({ userId: user._id });
+
+    if (emailErr.message === 'EMAIL_NOT_CONFIGURED') {
+      return res.status(503).json({
+        message: 'Email service is not configured on the server. Please contact the admin.',
+      });
+    }
+    console.error('Email send error:', emailErr.message);
+    return res.status(502).json({
+      message: 'Failed to send verification email. Check your email address and try again.',
+    });
+  }
 
   res.status(201).json({
     pendingVerification: true,

@@ -1,24 +1,36 @@
 const nodemailer = require('nodemailer');
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+let transporter = null;
+
+function getTransporter() {
+  if (transporter) return transporter;
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) return null;
+  transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+  return transporter;
+}
 
 /**
  * Send an OTP email for email verification during signup.
+ * Throws if email credentials are not configured.
  */
 exports.sendOTPEmail = async (toEmail, name, otp) => {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn('⚠️  EMAIL_USER / EMAIL_PASS not set — skipping OTP email (DEV mode)');
-    console.info(`   OTP for ${toEmail}: ${otp}`);
-    return;
+  const t = getTransporter();
+
+  if (!t) {
+    // Dev mode: log OTP to console
+    console.warn('⚠️  EMAIL_USER / EMAIL_PASS not set — OTP will be logged only (set env vars for production)');
+    console.info(`📧  OTP for ${toEmail}: ${otp}`);
+    // In dev/test, throw so the caller can surface a useful error
+    throw new Error('EMAIL_NOT_CONFIGURED');
   }
 
-  await transporter.sendMail({
+  await t.sendMail({
     from: `"Aura-Audit" <${process.env.EMAIL_USER}>`,
     to: toEmail,
     subject: `Your Aura-Audit verification code: ${otp}`,
