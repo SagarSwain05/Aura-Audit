@@ -1,4 +1,36 @@
 services:
+  # ── Node.js Backend API + Socket.IO ─────────────────────────────────────────
+  - type: web
+    name: aura-audit-server
+    env: docker
+    rootDir: server
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 5001
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: AI_ENGINE_URL
+        value: https://aura-audit-ai.onrender.com
+      - key: CLIENT_URL
+        value: https://aura-audit-app.vercel.app
+
+  # ── Python AI Engine ─────────────────────────────────────────────────────────
   - type: web
     name: aura-audit-ai
     env: docker
