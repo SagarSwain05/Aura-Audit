@@ -6,7 +6,17 @@ const Student = require('../models/Student');
 const Notification = require('../models/Notification');
 const { cloudinary } = require('../middleware/upload');
 
-const AI_ENGINE_URL = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+const AI_ENGINE_URL = (process.env.AI_ENGINE_URL || 'http://localhost:8000').replace(/\/+$/, '');
+
+function getAxiosErrorMessage(err) {
+  if (err.response) {
+    const detail = err.response.data?.detail || err.response.data?.message || JSON.stringify(err.response.data);
+    return `AI engine ${err.response.status}: ${detail}`;
+  }
+  if (err.code === 'ECONNABORTED') return 'AI engine request timed out';
+  if (err.code) return `${err.code}: ${err.message}`;
+  return err.message || 'Unknown AI engine error';
+}
 
 exports.createAudit = async (req, res) => {
   if (!req.file) {
@@ -32,10 +42,17 @@ exports.createAudit = async (req, res) => {
   // Process asynchronously
   processAuditAsync(audit, req.file, dreamRole || req.user.dreamRole).catch(
     async (err) => {
+      console.error('Audit processing failed:', getAxiosErrorMessage(err));
       await Audit.findByIdAndUpdate(audit._id, {
         status: 'failed',
-        errorMessage: err.message,
+        errorMessage: getAxiosErrorMessage(err),
       });
+      if (global.emitAuditUpdate) {
+        global.emitAuditUpdate(audit._id.toString(), {
+          status: 'failed',
+          error: getAxiosErrorMessage(err),
+        });
+      }
     }
   );
 };
@@ -43,7 +60,7 @@ exports.createAudit = async (req, res) => {
 async function processAuditAsync(audit, file, dreamRole) {
   try {
     // Download PDF from Cloudinary to send to AI engine
-    const pdfResponse = await axios.get(file.path, { responseType: 'arraybuffer' });
+    const pdfResponse = await axios.get(file.path, { responseType: 'arraybuffer', timeout: 30000 });
     const pdfBuffer = Buffer.from(pdfResponse.data);
 
     // Send to AI Engine
@@ -57,7 +74,7 @@ async function processAuditAsync(audit, file, dreamRole) {
 
     const aiResponse = await axios.post(`${AI_ENGINE_URL}/analyze`, formData, {
       headers: formData.getHeaders(),
-      timeout: 120000, // 2 min timeout for AI
+      timeout: 180000, // Render free-tier cold starts + LLM calls can be slow
     });
 
     const data = aiResponse.data;

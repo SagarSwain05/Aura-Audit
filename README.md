@@ -5,7 +5,7 @@
 Aura-Audit is a full-stack AI career platform that audits resumes with Gemini 1.5 Flash, assigns a multi-dimensional **Aura Score**, and connects students, companies, and universities in a unified career ecosystem.
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-aura--audit--app.vercel.app-7C3AED?style=for-the-badge&logo=vercel)](https://aura-audit-app.vercel.app)
-[![Backend](https://img.shields.io/badge/API-Railway-0B0D0E?style=for-the-badge&logo=railway)](https://server-production-bc09.up.railway.app)
+[![Backend](https://img.shields.io/badge/API-Render-46E3B7?style=for-the-badge&logo=render)](https://aura-audit-server.onrender.com)
 [![AI Engine](https://img.shields.io/badge/AI%20Engine-Render-46E3B7?style=for-the-badge&logo=render)](https://aura-audit-ai.onrender.com)
 [![GitHub](https://img.shields.io/badge/GitHub-SagarSwain05%2FAura--Audit-181717?style=for-the-badge&logo=github)](https://github.com/SagarSwain05/Aura-Audit)
 
@@ -16,11 +16,12 @@ Aura-Audit is a full-stack AI career platform that audits resumes with Gemini 1.
 | Service | URL | Platform |
 |---------|-----|----------|
 | **Frontend** | https://aura-audit-app.vercel.app | Vercel |
-| **Backend API** | https://server-production-bc09.up.railway.app | Railway |
+| **Backend API** | https://aura-audit-server.onrender.com | Render (free tier) |
 | **AI Engine** | https://aura-audit-ai.onrender.com | Render (free tier) |
 | **Database** | MongoDB Atlas (aura-audit-db cluster) | Atlas |
 
 > **Note:** The AI engine runs on Render's free tier and may take ~30s to wake up on the first request after 15 minutes of inactivity.
+> **Deployment check:** See `DEPLOYMENT_CHECKLIST.md` if production audits fail. Backend and AI engine are both deployed on Render.
 
 ---
 
@@ -60,7 +61,7 @@ Aura-Audit is a full-stack AI career platform that audits resumes with Gemini 1.
 └──────────────────────┬──────────────────────────────────┘
                        │ HTTPS / WebSocket (Socket.IO)
 ┌──────────────────────▼──────────────────────────────────┐
-│                   BACKEND API (Railway)                  │
+│                   BACKEND API (Render)                   │
 │           Node.js + Express.js + Socket.IO              │
 │  Auth · Audit · Student · Company · TPO · Jobs · Notifs │
 └────────────┬──────────────────────────┬─────────────────┘
@@ -120,7 +121,7 @@ Aura-Audit is a full-stack AI career platform that audits resumes with Gemini 1.
 | Service | Role |
 |---------|------|
 | **Vercel** | Frontend hosting + CI/CD |
-| **Railway** | Backend API hosting |
+| **Render** | Backend API + AI engine hosting |
 | **Render** | AI engine hosting (free tier) |
 | **MongoDB Atlas** | Managed database |
 | **Cloudinary** | Resume PDF CDN |
@@ -334,7 +335,7 @@ cd ../ai-engine && pip install -r requirements.txt
 
 **`server/.env`**
 ```env
-PORT=5000
+PORT=5001
 MONGO_URI=mongodb://localhost:27017/aura-audit
 JWT_SECRET=your_jwt_secret
 CLOUDINARY_CLOUD_NAME=your_cloud_name
@@ -351,7 +352,7 @@ GEMINI_API_KEY=your_gemini_api_key
 
 **`client/.env.local`**
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:5000
+NEXT_PUBLIC_API_URL=http://localhost:5001
 NEXT_PUBLIC_AI_URL=http://localhost:8000
 ```
 
@@ -377,19 +378,17 @@ Open http://localhost:3000
 ### Frontend (Vercel)
 1. Connect GitHub repo to Vercel
 2. Set environment variables:
-   - `NEXT_PUBLIC_API_URL` = Railway backend URL (no `/api` suffix)
+   - `NEXT_PUBLIC_API_URL` = active backend URL (no `/api` suffix)
    - `NEXT_PUBLIC_AI_URL` = Render AI engine URL
 3. Framework: Next.js (auto-detected)
 
-### Backend (Railway)
-1. New project → Deploy from GitHub (`server/` directory)
-2. Set all env vars in Railway dashboard
-3. `nixpacks.toml` handles the build (`npm ci --legacy-peer-deps`)
-
-### AI Engine (Render)
-1. New Web Service → Docker runtime
-2. Set `GEMINI_API_KEY` env var
-3. Free tier: spins down after 15min inactivity
+### Backend + AI Engine (Render)
+1. Create or sync from `render.yaml`
+2. Backend service: `aura-audit-server`, root directory `server/`, Docker runtime
+3. AI service: `aura-audit-ai`, root directory `ai-engine/`, Docker runtime
+4. Set all `sync: false` env vars in the Render dashboard
+5. Free tier: services may spin down after inactivity
+6. Verify backend `/health`, AI `/health`, and AI `/ready` after every deploy
 
 ### Database (MongoDB Atlas)
 1. Create cluster → Create user

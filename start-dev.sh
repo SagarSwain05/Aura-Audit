@@ -60,7 +60,7 @@ fi
 
 # Launch
 echo -e "${CYAN}  → AI Engine (FastAPI)  : http://localhost:8000${NC}"
-echo -e "${CYAN}  → Backend (Express)    : http://localhost:5000${NC}"
+echo -e "${CYAN}  → Backend (Express)    : http://localhost:5001${NC}"
 echo -e "${CYAN}  → Frontend (Next.js)   : http://localhost:3000${NC}"
 echo ""
 

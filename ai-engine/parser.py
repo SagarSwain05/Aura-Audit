@@ -31,11 +31,12 @@ def extract_text_from_bytes(pdf_bytes: bytes) -> dict:
             blocks.sort(key=lambda b: (round(b[1] / 10), b[0]))
             page_text = "\n".join(b[4].strip() for b in blocks if b[4].strip())
             full_text += page_text + "\n"
+        page_count = len(doc)
         doc.close()
 
         text = _clean_text(full_text)
         lines = [ln.strip() for ln in text.split('\n') if ln.strip()]
-        return {"text": text, "pages": len(doc), "lines": lines, "method": "pymupdf"}
+        return {"text": text, "pages": page_count, "lines": lines, "method": "pymupdf"}
 
     except Exception:
         # Fallback: pdfplumber

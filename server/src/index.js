@@ -36,7 +36,6 @@ const corsOptions = {
     // Allow any vercel.app subdomain (covers all preview deployments)
     if (origin.endsWith('.vercel.app')) return cb(null, true);
     if (origin.endsWith('.onrender.com')) return cb(null, true);
-    if (origin.endsWith('.railway.app')) return cb(null, true);
     if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
     cb(new Error(`CORS blocked: ${origin}`));
   },

@@ -18,6 +18,7 @@ from services.youtube_service import search_tutorials
 from routers.assessment import router as assessment_router
 from routers.jobs import router as jobs_router
 from routers.live_jobs import router as live_jobs_router
+from services.llm_client import provider_status
 
 app = FastAPI(
     title="Aura-Audit AI Engine",
@@ -48,7 +49,17 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "engine": "Aura-Audit v2.0.0"}
+    return {"status": "ok", "engine": "Aura-Audit v2.0.0", "providers": provider_status()}
+
+
+@app.get("/ready")
+async def ready():
+    providers = provider_status()
+    return {
+        "status": "ready" if providers["has_any_llm_provider"] else "degraded",
+        "engine": "Aura-Audit v2.0.0",
+        "providers": providers,
+    }
 
 
 # ── Resume Analysis (existing) ───────────────────────

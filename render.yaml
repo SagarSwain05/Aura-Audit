@@ -38,7 +38,12 @@ services:
     dockerfilePath: ./Dockerfile
     plan: free
     region: oregon
+    healthCheckPath: /health
     envVars:
+      - key: PORT
+        value: 8000
+      - key: GEMINI_MODEL
+        value: gemini-2.0-flash
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_KEY_1

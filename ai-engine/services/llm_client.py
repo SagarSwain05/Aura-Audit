@@ -56,6 +56,15 @@ def _groq_keys() -> list[str]:
     return keys
 
 
+def provider_status() -> dict:
+    """Return non-secret provider configuration status for health/readiness checks."""
+    return {
+        "gemini_keys_configured": len(_gemini_keys()),
+        "groq_keys_configured": len(_groq_keys()),
+        "has_any_llm_provider": bool(_gemini_keys() or _groq_keys()),
+    }
+
+
 def _next_gemini_key() -> Optional[str]:
     global _gemini_index
     keys = _gemini_keys()
@@ -84,7 +93,7 @@ def _call_gemini_sync(
     prompt: str,
     api_key: str,
     json_mode: bool = False,
-    model: str = "gemini-2.0-flash",
+    model: str = "",
 ) -> str:
     from google import genai
     from google.genai import types
@@ -93,9 +102,10 @@ def _call_gemini_sync(
         temperature=0.0 if json_mode else 0.3,
         **({"response_mime_type": "application/json"} if json_mode else {}),
     )
+    selected_model = model or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     client = genai.Client(api_key=api_key)
     resp = client.models.generate_content(
-        model=model,
+        model=selected_model,
         contents=[prompt],
         config=config,
     )

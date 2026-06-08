@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  output: 'standalone', // required for Docker/Railway deployment
+  output: 'standalone', // required for Docker deployments
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'i.ytimg.com' },
