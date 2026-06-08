@@ -19,6 +19,7 @@ const careerRoutes = require('./routes/career');
 const companyRoutes = require('./routes/company');
 const universityRoutes = require('./routes/universityRoutes');
 const notificationRoutes = require('./routes/notifications');
+const { getEmailProviderStatus } = require('./services/emailService');
 
 const app = express();
 const server = http.createServer(app);
@@ -58,7 +59,11 @@ app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 200 }));
 
 // ── Routes ─────────────────────────────────────────────
 app.get('/', (req, res) => res.json({ status: 'ok', service: 'Aura-Audit API', version: 'v2', docs: '/health' }));
-app.get('/health', (req, res) => res.json({ status: 'ok', service: 'aura-audit-server v2' }));
+app.get('/health', (req, res) => res.json({
+  status: 'ok',
+  service: 'aura-audit-server v2',
+  email: getEmailProviderStatus(),
+}));
 app.use('/api/auth', authRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/student', studentRoutes);

@@ -25,6 +25,24 @@ services:
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_FROM_NAME
+        value: Aura-Audit
+      - key: BREVO_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_SECURE
+        sync: false
       - key: AI_ENGINE_URL
         value: https://aura-audit-ai.onrender.com
       - key: CLIENT_URL

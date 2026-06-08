@@ -70,14 +70,14 @@ exports.register = async (req, res) => {
     else if (role === 'company') await Company.deleteOne({ userId: user._id });
     else if (role === 'tpo') await University.deleteOne({ userId: user._id });
 
-    if (emailErr.message === 'EMAIL_NOT_CONFIGURED') {
+    if (emailErr.message === 'EMAIL_NOT_CONFIGURED' || emailErr.message === 'EMAIL_FROM_NOT_CONFIGURED') {
       return res.status(503).json({
         message: 'Email service is not configured on the server. Please contact the admin.',
       });
     }
     console.error('Email send error:', emailErr.message);
     return res.status(502).json({
-      message: 'Failed to send verification email. Check your email address and try again.',
+      message: 'Failed to send verification email. Please try again shortly.',
     });
   }
 
@@ -220,7 +220,12 @@ exports.forgotPassword = async (req, res) => {
     await sendResetPasswordEmail(email, user.name, otp);
   } catch (err) {
     console.error('Reset email error:', err.message);
-    return res.status(502).json({ message: 'Failed to send reset email. Please try again.' });
+    if (err.message === 'EMAIL_NOT_CONFIGURED' || err.message === 'EMAIL_FROM_NOT_CONFIGURED') {
+      return res.status(503).json({
+        message: 'Email service is not configured. Please contact support.',
+      });
+    }
+    return res.status(502).json({ message: 'Failed to send reset email. Please try again shortly.' });
   }
 
   res.json({ message: 'If that email exists, a reset code has been sent.' });
