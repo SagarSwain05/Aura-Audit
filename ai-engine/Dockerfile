@@ -17,7 +17,7 @@ COPY . .
 # Remove venv and cache if accidentally copied
 RUN rm -rf venv __pycache__ **/__pycache__
 
-EXPOSE 8000
+EXPOSE 10000
 
 HEALTHCHECK --interval=30s --timeout=30s --start-period=120s --retries=5 \
   CMD python -c "import os, urllib.request; urllib.request.urlopen(f\"http://localhost:{os.getenv('PORT', '8000')}/health\")" || exit 1
