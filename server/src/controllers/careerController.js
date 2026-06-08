@@ -1,5 +1,6 @@
 const axios = require('axios');
 const Student = require('../models/Student');
+const { makeFallbackRoadmap } = require('../utils/aiFallbacks');
 
 const AI = process.env.AI_ENGINE_URL || 'http://localhost:8000';
 
@@ -42,7 +43,8 @@ exports.getCareerRoadmap = async (req, res) => {
     });
     return res.json(aiRes.data);
   } catch (e) {
-    return res.status(500).json({ message: 'Roadmap generation failed', error: e.message });
+    console.warn('Roadmap AI unavailable, using fallback:', e.message);
+    return res.json(makeFallbackRoadmap(role, skills, days));
   }
 };
 

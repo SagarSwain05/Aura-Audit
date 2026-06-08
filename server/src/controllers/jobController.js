@@ -4,6 +4,7 @@ const JobApplication = require('../models/JobApplication');
 const Company = require('../models/Company');
 const Student = require('../models/Student');
 const Notification = require('../models/Notification');
+const { makeFallbackLiveJobs } = require('../utils/aiFallbacks');
 
 const AI = process.env.AI_ENGINE_URL || 'http://localhost:8000';
 
@@ -207,13 +208,7 @@ exports.getLiveJobs = async (req, res) => {
     return res.json(aiRes.data);
   } catch (err) {
     console.error('Live jobs error:', err.message);
-    return res.status(502).json({
-      message: 'Real-time job search unavailable',
-      query: '',
-      location,
-      total: 0,
-      jobs: [],
-    });
+    return res.json(makeFallbackLiveJobs(dreamRole || 'Software Engineer', location, num_jobs));
   }
 };
 

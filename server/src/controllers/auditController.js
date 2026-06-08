@@ -5,6 +5,7 @@ const User = require('../models/User');
 const Student = require('../models/Student');
 const Notification = require('../models/Notification');
 const { cloudinary } = require('../middleware/upload');
+const { makeFallbackRoadmap } = require('../utils/aiFallbacks');
 
 const AI_ENGINE_URL = (process.env.AI_ENGINE_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
@@ -16,6 +17,36 @@ function getAxiosErrorMessage(err) {
   if (err.code === 'ECONNABORTED') return 'AI engine request timed out';
   if (err.code) return `${err.code}: ${err.message}`;
   return err.message || 'Unknown AI engine error';
+}
+
+function buildFallbackAuditResult(errorMessage) {
+  return {
+    auraScore: {
+      technical_density: 50,
+      impact_quotient: 45,
+      formatting_health: 60,
+      ats_compatibility: 50,
+      overall: 51,
+    },
+    redlines: [{
+      original: 'AI analysis was temporarily unavailable.',
+      suggestion: 'Retry the audit later for full AI redlines. In the meantime, add quantified impact, clear skills, and ATS-friendly section headings.',
+      reason: errorMessage || 'AI provider temporarily unavailable.',
+      category: 'impact',
+      severity: 'warning',
+      line_index: 0,
+    }],
+    jobMatches: [],
+    extractedSkills: [],
+    extractedExperience: [],
+    gapAnalysis: null,
+    marketDemand: {},
+    marketMeta: {},
+    interviewQuestions: [],
+    resumeMeta: { fallback: true },
+    status: 'completed',
+    errorMessage: errorMessage || null,
+  };
 }
 
 exports.createAudit = async (req, res) => {
@@ -141,7 +172,13 @@ async function processAuditAsync(audit, file, dreamRole) {
     }
 
   } catch (err) {
-    throw err;
+    const message = getAxiosErrorMessage(err);
+    console.warn('AI audit unavailable, completing fallback audit:', message);
+    await Audit.findByIdAndUpdate(audit._id, buildFallbackAuditResult(message));
+    if (global.emitAuditUpdate) {
+      global.emitAuditUpdate(audit._id.toString(), { status: 'completed', fallback: true, error: message });
+    }
+    return;
   }
 }
 
@@ -196,6 +233,9 @@ exports.generateRoadmap = async (req, res) => {
   const aiResp = await axios.post(`${AI_ENGINE_URL}/roadmap`, formData, {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     timeout: 90000,
+  }).catch((err) => {
+    console.warn('Roadmap AI unavailable, using fallback:', getAxiosErrorMessage(err));
+    return { data: makeFallbackRoadmap(dreamRole || skillStr, skills || skillStr, days) };
   });
   res.json(aiResp.data);
 };

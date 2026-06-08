@@ -2,6 +2,7 @@ const axios = require('axios');
 const Assessment = require('../models/Assessment');
 const Student = require('../models/Student');
 const Notification = require('../models/Notification');
+const { makeFallbackAssessment } = require('../utils/aiFallbacks');
 
 const AI = process.env.AI_ENGINE_URL || 'http://localhost:8000';
 
@@ -13,10 +14,17 @@ exports.generateAssessment = async (req, res) => {
   const student = await Student.findOne({ userId: req.user._id });
   if (!student) return res.status(404).json({ message: 'Student not found' });
 
-  const aiRes = await axios.post(`${AI}/api/v1/assessment/generate`, {
-    skill, current_level: currentLevel || 'beginner', target_level: targetLevel || 'intermediate',
-  });
-  const { questions, total_points } = aiRes.data;
+  let aiData;
+  try {
+    const aiRes = await axios.post(`${AI}/api/v1/assessment/generate`, {
+      skill, current_level: currentLevel || 'beginner', target_level: targetLevel || 'intermediate',
+    }, { timeout: 60000 });
+    aiData = aiRes.data;
+  } catch (err) {
+    console.warn('Assessment AI unavailable, using fallback:', err.message);
+    aiData = makeFallbackAssessment(skill, currentLevel || 'beginner', targetLevel || 'intermediate');
+  }
+  const { questions, total_points } = aiData;
 
   const assessment = await Assessment.create({
     student: student._id,
@@ -28,7 +36,7 @@ exports.generateAssessment = async (req, res) => {
     startedAt: new Date(),
   });
 
-  res.status(201).json({ assessmentId: assessment._id, questions, total_points });
+  res.status(201).json({ assessmentId: assessment._id, questions, total_points, fallback: Boolean(aiData.fallback) });
 };
 
 // POST /api/assessment/:id/submit

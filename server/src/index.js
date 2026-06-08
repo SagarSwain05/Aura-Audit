@@ -23,6 +23,7 @@ const { getEmailProviderStatus } = require('./services/emailService');
 
 const app = express();
 const server = http.createServer(app);
+app.set('trust proxy', 1);
 
 // Allowed origins — local dev + all Vercel preview/production URLs
 const ALLOWED_ORIGINS = [
