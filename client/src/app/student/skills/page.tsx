@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  BookOpen, Plus, Trash2, ChevronUp, ChevronDown, Loader2, CheckCircle,
-  Code2, MessageSquare, BarChart2, Globe, Sparkles, FileText, Calendar,
+  BookOpen, Plus, Trash2, ChevronUp, ChevronDown, Loader2, CheckCircle, ShieldAlert,
+  Code2, MessageSquare, BarChart2, Globe, Sparkles, FileText, Calendar, Search,
 } from 'lucide-react'
 import { studentApi } from '@/lib/api'
 import { useRouter } from 'next/navigation'
@@ -18,6 +18,8 @@ interface Skill {
   verified?: boolean
   addedAt?: string
 }
+
+type Catalog = Record<string, string[]>
 
 const LEVELS = ['beginner', 'intermediate', 'advanced', 'expert']
 const LEVEL_COLORS: Record<string, string> = {
@@ -36,18 +38,16 @@ const CATEGORY_META: Record<string, { label: string; icon: typeof Code2; color: 
 }
 
 function SkillCard({
-  skill, onLevelChange, onCategoryChange, onRemove, onImprove, removing,
+  skill, onLevelChange, onCategoryChange, onRemove, onVerify, removing,
 }: {
   skill: Skill
   onLevelChange: (level: string) => void
   onCategoryChange: (category: string) => void
   onRemove: () => void
-  onImprove: () => void
+  onVerify: () => void
   removing: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
-  const levelIdx = LEVELS.indexOf(skill.level)
-  const meta = CATEGORY_META[skill.category] || CATEGORY_META.technical
 
   return (
     <motion.div
@@ -61,7 +61,11 @@ function SkillCard({
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left"
       >
-        {skill.verified && <CheckCircle className="w-3.5 h-3.5 shrink-0" />}
+        {skill.verified ? (
+          <span title="Verified"><CheckCircle className="w-3.5 h-3.5 shrink-0 text-emerald-400" /></span>
+        ) : (
+          <span title="Unverified"><ShieldAlert className="w-3.5 h-3.5 shrink-0 opacity-40" /></span>
+        )}
         <span className="font-medium flex-1 truncate">{skill.name}</span>
         <span className="text-[10px] uppercase tracking-wide opacity-70 shrink-0">{skill.level}</span>
         {expanded ? <ChevronUp className="w-3.5 h-3.5 shrink-0 opacity-60" /> : <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-60" />}
@@ -76,6 +80,16 @@ function SkillCard({
             className="overflow-hidden"
           >
             <div className="px-3 pb-3 pt-1 space-y-3 border-t border-white/5">
+              {/* Verification status */}
+              <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg ${
+                skill.verified ? 'bg-emerald-400/10 text-emerald-400' : 'bg-white/5 text-aura-muted'
+              }`}>
+                {skill.verified
+                  ? <><CheckCircle className="w-3.5 h-3.5 shrink-0" /> Verified — you passed an assessment for this skill</>
+                  : <><ShieldAlert className="w-3.5 h-3.5 shrink-0" /> Unverified — pass an assessment to verify your proficiency</>
+                }
+              </div>
+
               {/* Details */}
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-aura-muted">
                 {skill.addedAt && (
@@ -85,7 +99,8 @@ function SkillCard({
                 )}
                 {skill.source && (
                   <span className="flex items-center gap-1">
-                    <FileText className="w-3 h-3" /> {skill.source === 'resume' ? 'From resume' : 'Added manually'}
+                    <FileText className="w-3 h-3" />
+                    {skill.source === 'resume' ? 'From resume' : skill.source === 'assessment' ? 'From assessment' : 'Added manually'}
                   </span>
                 )}
               </div>
@@ -132,10 +147,10 @@ function SkillCard({
               {/* Actions */}
               <div className="flex items-center gap-2 pt-1">
                 <button
-                  onClick={onImprove}
+                  onClick={onVerify}
                   className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-aura-purple/10 text-aura-purple-light border border-aura-purple/20 hover:bg-aura-purple/20 transition-all"
                 >
-                  <Sparkles className="w-3 h-3" /> Improve with Assessment
+                  <Sparkles className="w-3 h-3" /> {skill.verified ? 'Practice Again' : 'Verify with Assessment'}
                 </button>
                 <button
                   onClick={onRemove}
@@ -158,9 +173,13 @@ export default function SkillsPage() {
   const router = useRouter()
   const [skills, setSkills] = useState<Skill[]>([])
   const [loading, setLoading] = useState(true)
+  const [catalog, setCatalog] = useState<Catalog>({})
   const [newSkill, setNewSkill] = useState({ name: '', level: 'beginner', category: 'technical' })
+  const [query, setQuery] = useState('')
+  const [showSuggestions, setShowSuggestions] = useState(false)
   const [adding, setAdding] = useState(false)
   const [removing, setRemoving] = useState<string | null>(null)
+  const pickerRef = useRef<HTMLDivElement>(null)
 
   const load = () => {
     studentApi.getProfile().then((r) => {
@@ -168,19 +187,52 @@ export default function SkillsPage() {
     }).finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    studentApi.getSkillCatalog().then((r) => setCatalog(r.data.catalog || {})).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setShowSuggestions(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const flatCatalog = useMemo(
+    () => CATEGORIES.flatMap((cat) => (catalog[cat] || []).map((name) => ({ name, category: cat }))),
+    [catalog]
+  )
+
+  const existingNames = useMemo(() => new Set(skills.map((s) => s.name.toLowerCase())), [skills])
+
+  const suggestions = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return []
+    return flatCatalog
+      .filter((s) => s.name.toLowerCase().includes(q) && !existingNames.has(s.name.toLowerCase()))
+      .slice(0, 8)
+  }, [query, flatCatalog, existingNames])
+
+  const exactCatalogMatch = flatCatalog.some((s) => s.name.toLowerCase() === query.trim().toLowerCase())
+
+  const selectSuggestion = (s: { name: string; category: string }) => {
+    setNewSkill({ ...newSkill, name: s.name, category: s.category })
+    setQuery(s.name)
+    setShowSuggestions(false)
+  }
 
   const handleAdd = async () => {
-    const name = newSkill.name.trim()
-    if (!name) return toast.error('Enter a skill name')
-    if (skills.find((s) => s.name.toLowerCase() === name.toLowerCase())) {
-      return toast.error('Skill already added')
-    }
+    const name = (newSkill.name || query).trim()
+    if (!name) return toast.error('Search and pick a skill, or enter a custom one')
+    if (existingNames.has(name.toLowerCase())) return toast.error('Skill already added')
 
-    // Optimistic: show it immediately, reconcile with the server's response.
     const optimisticSkill: Skill = { name, level: newSkill.level, category: newSkill.category, addedAt: new Date().toISOString() }
     setSkills((prev) => [...prev, optimisticSkill])
     setNewSkill({ name: '', level: 'beginner', category: 'technical' })
+    setQuery('')
+    setShowSuggestions(false)
     setAdding(true)
     try {
       const r = await studentApi.addSkill({ name, level: newSkill.level, category: newSkill.category })
@@ -234,7 +286,7 @@ export default function SkillsPage() {
     }
   }
 
-  const handleImprove = (skill: Skill) => {
+  const handleVerify = (skill: Skill) => {
     router.push(`/student/assessments?skill=${encodeURIComponent(skill.name)}&level=${encodeURIComponent(skill.level === 'expert' ? 'advanced' : skill.level)}`)
   }
 
@@ -242,6 +294,8 @@ export default function SkillsPage() {
     acc[cat] = skills.filter((s) => (s.category || 'technical') === cat)
     return acc
   }, {} as Record<string, Skill[]>)
+
+  const verifiedCount = skills.filter((s) => s.verified).length
 
   return (
     <div className="p-4 sm:p-6 space-y-6 w-full">
@@ -255,14 +309,56 @@ export default function SkillsPage() {
         <h2 className="text-sm font-semibold mb-3">Add New Skill</h2>
         <div className="flex flex-col gap-3">
           <div className="flex gap-3 flex-wrap">
-            <input
-              type="text"
-              value={newSkill.name}
-              onChange={(e) => setNewSkill({ ...newSkill, name: e.target.value })}
-              onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-              placeholder="e.g. React, Public Speaking, Data Analysis, Project Management..."
-              className="input-field flex-1 min-w-48"
-            />
+            <div ref={pickerRef} className="relative flex-1 min-w-48">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-aura-muted" />
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value)
+                    setNewSkill({ ...newSkill, name: e.target.value })
+                    setShowSuggestions(true)
+                  }}
+                  onFocus={() => setShowSuggestions(true)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                  placeholder="Search skills — React, Public Speaking, Data Analysis, Project Management..."
+                  className="input-field pl-9 w-full"
+                />
+              </div>
+              {showSuggestions && query.trim() && (
+                <div className="absolute z-20 mt-1.5 w-full glass-card border border-white/10 rounded-xl overflow-hidden max-h-72 overflow-y-auto shadow-xl">
+                  {suggestions.length > 0 ? (
+                    <>
+                      {suggestions.map((s) => {
+                        const m = CATEGORY_META[s.category] || CATEGORY_META.technical
+                        return (
+                          <button
+                            key={s.name}
+                            onClick={() => selectSuggestion(s)}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-white/5 transition-colors"
+                          >
+                            <m.icon className={`w-3.5 h-3.5 shrink-0 ${m.color}`} />
+                            <span className="flex-1 truncate">{s.name}</span>
+                            <span className={`text-[10px] ${m.color}`}>{m.label}</span>
+                          </button>
+                        )
+                      })}
+                    </>
+                  ) : (
+                    <p className="px-3 py-2.5 text-xs text-aura-muted">No catalog matches — you can still add it as a custom skill below.</p>
+                  )}
+                  {!exactCatalogMatch && (
+                    <button
+                      onClick={() => setShowSuggestions(false)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left text-aura-purple-light hover:bg-aura-purple/10 transition-colors border-t border-white/5"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add &ldquo;{query.trim()}&rdquo; as a custom skill
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
             <button onClick={handleAdd} disabled={adding} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
               {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
               Add
@@ -304,19 +400,34 @@ export default function SkillsPage() {
         </div>
       </div>
 
-      {/* Career score indicator */}
-      <div className="glass-card p-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium">Skills for Career Score</span>
-          <span className="text-sm font-bold">{Math.min(skills.length, 8)}/8</span>
+      {/* Career score + verification indicators */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="glass-card p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium">Skills for Career Score</span>
+            <span className="text-sm font-bold">{Math.min(skills.length, 8)}/8</span>
+          </div>
+          <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-aura-gradient rounded-full transition-all duration-500"
+              style={{ width: `${(Math.min(skills.length, 8) / 8) * 100}%` }}
+            />
+          </div>
+          <p className="text-xs text-aura-muted mt-1.5">Each skill contributes to your 50% skill score component</p>
         </div>
-        <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-aura-gradient rounded-full transition-all duration-500"
-            style={{ width: `${(Math.min(skills.length, 8) / 8) * 100}%` }}
-          />
+        <div className="glass-card p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium flex items-center gap-1.5"><CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Verified Skills</span>
+            <span className="text-sm font-bold">{verifiedCount}/{skills.length || 0}</span>
+          </div>
+          <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-emerald-400 rounded-full transition-all duration-500"
+              style={{ width: `${skills.length ? (verifiedCount / skills.length) * 100 : 0}%` }}
+            />
+          </div>
+          <p className="text-xs text-aura-muted mt-1.5">Pass an AI assessment for a skill to verify your proficiency</p>
         </div>
-        <p className="text-xs text-aura-muted mt-1.5">Each skill contributes to your 50% skill score component</p>
       </div>
 
       {loading ? (
@@ -326,7 +437,7 @@ export default function SkillsPage() {
       ) : skills.length === 0 ? (
         <div className="glass-card p-12 text-center">
           <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-40" />
-          <p className="text-aura-muted">No skills yet. Add your first skill above!</p>
+          <p className="text-aura-muted">No skills yet. Search and add your first skill above!</p>
         </div>
       ) : (
         <div className="space-y-5">
@@ -348,7 +459,7 @@ export default function SkillsPage() {
                       onLevelChange={(level) => handleLevelChange(skill.name, level)}
                       onCategoryChange={(category) => handleCategoryChange(skill.name, category)}
                       onRemove={() => handleRemove(skill.name)}
-                      onImprove={() => handleImprove(skill)}
+                      onVerify={() => handleVerify(skill)}
                     />
                   ))}
                 </div>

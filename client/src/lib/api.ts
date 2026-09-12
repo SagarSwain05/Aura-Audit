@@ -72,6 +72,7 @@ export const studentApi = {
   updateProfile: (data: Record<string, unknown>) => api.put('/api/student/profile', data),
   getDashboard: () => api.get('/api/student/dashboard'),
   getLeaderboard: () => api.get('/api/student/leaderboard'),
+  getSkillCatalog: () => api.get('/api/student/skills/catalog'),
   addSkill: (skill: { name: string; level: string; category?: string }) => api.post('/api/student/skills', skill),
   updateSkill: (skillName: string, data: { level?: string; category?: string }) =>
     api.put(`/api/student/skills/${encodeURIComponent(skillName)}`, data),

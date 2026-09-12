@@ -1,7 +1,12 @@
 const Student = require('../models/Student');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
-const { categorizeSkill } = require('../utils/skillCategorizer');
+const { matchSkillToCatalog, CATALOG } = require('../utils/skillCategorizer');
+
+// GET /api/student/skills/catalog
+exports.getSkillCatalog = async (req, res) => {
+  res.json({ catalog: CATALOG });
+};
 
 // GET /api/student/profile
 exports.getProfile = async (req, res) => {
@@ -37,13 +42,20 @@ exports.addSkill = async (req, res) => {
   const student = await Student.findOne({ userId: req.user._id });
   if (!student) return res.status(404).json({ message: 'Profile not found' });
 
-  const exists = student.skills.find(s => s.name.toLowerCase() === name.toLowerCase());
+  // Normalize to the catalog's canonical name/category so the same real
+  // skill doesn't end up stored as several differently-spelled entries.
+  // An explicit category in the request (user picked one in the UI) wins
+  // over the catalog/heuristic guess.
+  const matched = matchSkillToCatalog(name);
+  const finalName = matched.matched ? matched.name : name.trim();
+
+  const exists = student.skills.find(s => s.name.toLowerCase() === finalName.toLowerCase());
   if (exists) return res.status(409).json({ message: 'Skill already added' });
 
   student.skills.push({
-    name: name.trim(),
+    name: finalName,
     level: level || 'beginner',
-    category: category || categorizeSkill(name),
+    category: category || matched.category,
     source: 'manual',
   });
   student.calculateCareerReadinessScore();

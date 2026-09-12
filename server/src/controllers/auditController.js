@@ -6,7 +6,7 @@ const Student = require('../models/Student');
 const Notification = require('../models/Notification');
 const { cloudinary } = require('../middleware/upload');
 const { makeFallbackRoadmap, makeFallbackInterview, makeFallbackBulletEnhancement } = require('../utils/aiFallbacks');
-const { categorizeSkill } = require('../utils/skillCategorizer');
+const { matchSkillToCatalog } = require('../utils/skillCategorizer');
 
 const AI_ENGINE_URL = (process.env.AI_ENGINE_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
@@ -151,17 +151,23 @@ async function processAuditAsync(audit, file, dreamRole, userGeminiKey) {
 
       // Sync extracted skills into the student profile — every skill the
       // resume shows, not just the first 5, so the profile actually reflects
-      // the latest resume. Never removes existing skills (manual entries or
-      // ones from an earlier resume) since there's no reliable signal that a
-      // skill not mentioned THIS time is actually gone.
+      // the latest resume. Names are normalized against the skill catalog
+      // (e.g. "ReactJS"/"React.js" both become "React") so the same real
+      // skill doesn't fragment into several near-duplicate entries across
+      // different resumes/phrasing. Never removes existing skills (manual
+      // entries or ones from an earlier resume) since there's no reliable
+      // signal that a skill not mentioned THIS time is actually gone.
       const extractedSkills = data.extracted_skills || [];
       for (const skill of extractedSkills) {
-        const skillName = typeof skill === 'string' ? skill : skill.name;
-        if (skillName && !student.skills.find(s => s.name.toLowerCase() === skillName.toLowerCase())) {
+        const rawName = typeof skill === 'string' ? skill : skill.name;
+        if (!rawName) continue;
+        const matched = matchSkillToCatalog(rawName);
+        const skillName = matched.name;
+        if (!student.skills.find(s => s.name.toLowerCase() === skillName.toLowerCase())) {
           student.skills.push({
             name: skillName,
             level: 'intermediate',
-            category: categorizeSkill(skillName),
+            category: matched.category,
             source: 'resume',
           });
         }

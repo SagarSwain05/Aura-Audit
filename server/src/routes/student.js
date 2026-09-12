@@ -6,6 +6,7 @@ router.use(protect, requireRole('student'));
 router.get('/dashboard', c.getDashboard);
 router.get('/profile', c.getProfile);
 router.put('/profile', c.updateProfile);
+router.get('/skills/catalog', c.getSkillCatalog);
 router.post('/skills', c.addSkill);
 router.put('/skills/:skillName', c.updateSkill);
 router.delete('/skills/:skillName', c.removeSkill);

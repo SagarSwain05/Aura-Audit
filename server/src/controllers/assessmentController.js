@@ -3,6 +3,9 @@ const Assessment = require('../models/Assessment');
 const Student = require('../models/Student');
 const Notification = require('../models/Notification');
 const { makeFallbackAssessment, makeFallbackEvaluation } = require('../utils/aiFallbacks');
+const { matchSkillToCatalog } = require('../utils/skillCategorizer');
+
+const LEVEL_ORDER = ['beginner', 'intermediate', 'advanced', 'expert'];
 
 const AI = process.env.AI_ENGINE_URL || 'http://localhost:8000';
 
@@ -105,6 +108,26 @@ exports.submitAssessment = async (req, res) => {
       issuer: 'Aura-Audit AI Assessment',
       issueDate: new Date(),
     });
+
+    // A skill only becomes "verified" by passing an assessment for it — this
+    // is the sole verification path. Match against the catalog so it lands
+    // on the same canonical skill entry the rest of the profile uses.
+    const matched = matchSkillToCatalog(assessment.skill);
+    const skillEntry = student.skills.find(s => s.name.toLowerCase() === matched.name.toLowerCase());
+    if (skillEntry) {
+      skillEntry.verified = true;
+      const currentIdx = LEVEL_ORDER.indexOf(skillEntry.level);
+      const targetIdx = LEVEL_ORDER.indexOf(assessment.targetLevel);
+      if (targetIdx > currentIdx) skillEntry.level = assessment.targetLevel;
+    } else {
+      student.skills.push({
+        name: matched.name,
+        level: assessment.targetLevel || 'intermediate',
+        category: matched.category,
+        source: 'assessment',
+        verified: true,
+      });
+    }
   }
   student.calculateCareerReadinessScore();
   await Promise.all([assessment.save(), student.save()]);
