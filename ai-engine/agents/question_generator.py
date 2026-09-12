@@ -71,13 +71,13 @@ Return ONLY valid JSON:
 }}"""
 
 
-async def generate_questions(skill: str, current_level: str, target_level: str) -> dict:
+async def generate_questions(skill: str, current_level: str, target_level: str, user_key: str = None) -> dict:
     variation_seed = random.randint(1000, 9999)
     prompt = PROMPT_TEMPLATE.format(
         skill=skill, current_level=current_level, target_level=target_level,
         variation_seed=variation_seed,
     )
-    data = await llm_generate_json(prompt)
+    data = await llm_generate_json(prompt, user_key=user_key)
     questions = data.get("questions", [])[:10]
     for i, q in enumerate(questions):
         q["id"] = i + 1

@@ -71,7 +71,8 @@ exports.createAudit = async (req, res) => {
   res.status(202).json({ auditId: audit._id, message: 'Analysis started' });
 
   // Process asynchronously
-  processAuditAsync(audit, req.file, dreamRole || req.user.dreamRole).catch(
+  const userGeminiKey = req.headers['x-user-gemini-key'] || null;
+  processAuditAsync(audit, req.file, dreamRole || req.user.dreamRole, userGeminiKey).catch(
     async (err) => {
       console.error('Audit processing failed:', getAxiosErrorMessage(err));
       await Audit.findByIdAndUpdate(audit._id, {
@@ -88,7 +89,7 @@ exports.createAudit = async (req, res) => {
   );
 };
 
-async function processAuditAsync(audit, file, dreamRole) {
+async function processAuditAsync(audit, file, dreamRole, userGeminiKey) {
   try {
     // Download PDF from Cloudinary to send to AI engine
     const pdfResponse = await axios.get(file.path, { responseType: 'arraybuffer', timeout: 30000 });
@@ -104,7 +105,10 @@ async function processAuditAsync(audit, file, dreamRole) {
     formData.append('dream_role', dreamRole || '');
 
     const aiResponse = await axios.post(`${AI_ENGINE_URL}/analyze`, formData, {
-      headers: formData.getHeaders(),
+      headers: {
+        ...formData.getHeaders(),
+        ...(userGeminiKey ? { 'x-user-gemini-key': userGeminiKey } : {}),
+      },
       timeout: 180000, // Render free-tier cold starts + LLM calls can be slow
     });
 
@@ -245,8 +249,12 @@ exports.generateRoadmap = async (req, res) => {
     dream_role: dreamRole || skillStr,
     days: String(days),
   });
+  const userGeminiKey = req.headers['x-user-gemini-key'];
   const aiResp = await axios.post(`${AI_ENGINE_URL}/roadmap`, formData, {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      ...(userGeminiKey ? { 'x-user-gemini-key': userGeminiKey } : {}),
+    },
     timeout: 90000,
   }).catch((err) => {
     console.warn('Roadmap AI unavailable, using fallback:', getAxiosErrorMessage(err));
@@ -266,7 +274,10 @@ exports.generateInterview = async (req, res) => {
     role: role || audit.dreamRole || 'Software Engineer',
   });
   const aiResp = await axios.post(`${AI_ENGINE_URL}/interview`, formData, {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      ...(req.headers['x-user-gemini-key'] ? { 'x-user-gemini-key': req.headers['x-user-gemini-key'] } : {}),
+    },
     timeout: 60000,
   }).catch((err) => {
     console.warn('Interview AI unavailable, using fallback:', getAxiosErrorMessage(err));
@@ -281,7 +292,10 @@ exports.enhanceBullet = async (req, res) => {
   formData.append('original', original);
   formData.append('role_context', roleContext || '');
   const aiResp = await axios.post(`${AI_ENGINE_URL}/enhance-bullet`, formData, {
-    headers: formData.getHeaders(),
+    headers: {
+      ...formData.getHeaders(),
+      ...(req.headers['x-user-gemini-key'] ? { 'x-user-gemini-key': req.headers['x-user-gemini-key'] } : {}),
+    },
   }).catch((err) => {
     console.warn('Bullet enhancement AI unavailable, using fallback:', getAxiosErrorMessage(err));
     return { data: makeFallbackBulletEnhancement(original) };

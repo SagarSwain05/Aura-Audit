@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
+from typing import Optional
 from agents.question_generator import generate_questions
 from agents.evaluation_agent import evaluate_assessment
 from agents.feedback_agent import generate_feedback
@@ -22,18 +23,25 @@ class EvaluateRequest(BaseModel):
 
 
 @router.post("/generate")
-async def generate(req: GenerateRequest):
+async def generate(
+    req: GenerateRequest,
+    x_user_gemini_key: Optional[str] = Header(default=None, alias="x-user-gemini-key"),
+):
     try:
-        data = await generate_questions(req.skill, req.current_level, req.target_level)
+        data = await generate_questions(req.skill, req.current_level, req.target_level, user_key=x_user_gemini_key or None)
         return {"success": True, **data}
     except Exception as e:
         raise HTTPException(500, str(e))
 
 
 @router.post("/evaluate")
-async def evaluate(req: EvaluateRequest):
+async def evaluate(
+    req: EvaluateRequest,
+    x_user_gemini_key: Optional[str] = Header(default=None, alias="x-user-gemini-key"),
+):
+    user_key = x_user_gemini_key or None
     try:
-        result = await evaluate_assessment(req.questions, req.answers)
+        result = await evaluate_assessment(req.questions, req.answers, user_key=user_key)
         # Extract weak areas from results (evaluation_agent now returns camelCase)
         weak = [
             r.get("missedPoints", [r.get("feedback", "")[:40]])
@@ -48,6 +56,7 @@ async def evaluate(req: EvaluateRequest):
             target_level=req.target_level,
             evaluation_result=result,
             weak_areas=flat_weak,
+            user_key=user_key,
         )
         return {"success": True, "evaluation": result, "feedback": feedback}
     except Exception as e:

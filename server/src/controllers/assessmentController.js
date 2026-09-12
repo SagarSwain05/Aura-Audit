@@ -14,11 +14,15 @@ exports.generateAssessment = async (req, res) => {
   const student = await Student.findOne({ userId: req.user._id });
   if (!student) return res.status(404).json({ message: 'Student not found' });
 
+  const userGeminiKey = req.headers['x-user-gemini-key'];
   let aiData;
   try {
     const aiRes = await axios.post(`${AI}/api/v1/assessment/generate`, {
       skill, current_level: currentLevel || 'beginner', target_level: targetLevel || 'intermediate',
-    }, { timeout: 60000 });
+    }, {
+      timeout: 60000,
+      headers: userGeminiKey ? { 'x-user-gemini-key': userGeminiKey } : {},
+    });
     aiData = aiRes.data;
   } catch (err) {
     console.warn('Assessment AI unavailable, using fallback:', err.message);
@@ -63,7 +67,10 @@ exports.submitAssessment = async (req, res) => {
     skill: assessment.skill,
     current_level: assessment.currentLevel,
     target_level: assessment.targetLevel,
-  }, { timeout: 60000 }).catch((err) => {
+  }, {
+    timeout: 60000,
+    headers: req.headers['x-user-gemini-key'] ? { 'x-user-gemini-key': req.headers['x-user-gemini-key'] } : {},
+  }).catch((err) => {
     console.warn('Assessment evaluation AI unavailable, using fallback grading:', err.message);
     return { data: makeFallbackEvaluation(assessment.questions, answersArray) };
   });

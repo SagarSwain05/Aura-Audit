@@ -4,7 +4,8 @@ Full-stack career platform AI: resume audit, assessment, RAG job matching, caree
 """
 
 import os
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Header
+from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
@@ -81,6 +82,7 @@ async def analyze(
     file: UploadFile = File(...),
     user_id: str = Form(...),
     dream_role: str = Form(default=""),
+    x_user_gemini_key: Optional[str] = Header(default=None, alias="x-user-gemini-key"),
 ):
     if not file.filename.endswith(".pdf"):
         raise HTTPException(400, "Only PDF files are supported.")
@@ -93,8 +95,9 @@ async def analyze(
     if len(resume_text.strip()) < 100:
         raise HTTPException(422, "Could not extract meaningful text from this PDF.")
 
+    user_key = x_user_gemini_key or None
     try:
-        audit_result = await analyze_resume(resume_text)
+        audit_result = await analyze_resume(resume_text, user_key=user_key)
     except Exception as e:
         raise HTTPException(500, f"Resume analysis failed: {e}")
 
@@ -106,14 +109,14 @@ async def analyze(
 
     if dream_role:
         try:
-            audit_result["gap_analysis"] = await analyze_gap(extracted_skills, dream_role, extracted_experience)
+            audit_result["gap_analysis"] = await analyze_gap(extracted_skills, dream_role, extracted_experience, user_key=user_key)
         except Exception:
             audit_result["gap_analysis"] = None
     else:
         audit_result["gap_analysis"] = None
 
     try:
-        market = await get_market_demand(extracted_skills[:10])
+        market = await get_market_demand(extracted_skills[:10], user_key=user_key)
         audit_result["market_demand"] = market.get("demand", {})
         audit_result["market_meta"] = {"trending": market.get("trending_additions", []), "hot_cities": market.get("hot_cities", {})}
     except Exception:
@@ -136,10 +139,11 @@ async def roadmap_endpoint(
     skill: str = Form(default=""),
     dream_role: str = Form(...),
     days: int = Form(default=30),
+    x_user_gemini_key: Optional[str] = Header(default=None, alias="x-user-gemini-key"),
 ):
     try:
         skills_list = [s.strip() for s in skill.split(",") if s.strip()] if skill else [dream_role]
-        result = await generate_roadmap(skills_list, dream_role, days)
+        result = await generate_roadmap(skills_list, dream_role, days, user_key=x_user_gemini_key or None)
         # Enrich first 5 days with YouTube resources (non-fatal)
         for day in result.get("days", [])[:5]:
             try:
@@ -157,18 +161,23 @@ async def roadmap_endpoint(
 async def interview_endpoint(
     resume_text: str = Form(default=""),
     role: str = Form(default="Software Engineer"),
+    x_user_gemini_key: Optional[str] = Header(default=None, alias="x-user-gemini-key"),
 ):
     try:
-        result = await generate_interview_questions(resume_text or "No resume provided", role)
+        result = await generate_interview_questions(resume_text or "No resume provided", role, user_key=x_user_gemini_key or None)
         return JSONResponse(content=result)
     except Exception as e:
         raise HTTPException(500, str(e))
 
 
 @app.post("/enhance-bullet")
-async def enhance_bullet_endpoint(original: str = Form(...), role_context: str = Form(default="")):
+async def enhance_bullet_endpoint(
+    original: str = Form(...),
+    role_context: str = Form(default=""),
+    x_user_gemini_key: Optional[str] = Header(default=None, alias="x-user-gemini-key"),
+):
     try:
-        return JSONResponse(content=await enhance_bullet(original, role_context))
+        return JSONResponse(content=await enhance_bullet(original, role_context, user_key=x_user_gemini_key or None))
     except Exception as e:
         raise HTTPException(500, str(e))
 

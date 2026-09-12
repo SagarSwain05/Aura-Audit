@@ -29,7 +29,7 @@ Return ONLY valid JSON:
 }}"""
 
 
-async def generate_feedback(skill, current_level, target_level, evaluation_result, weak_areas=None):
+async def generate_feedback(skill, current_level, target_level, evaluation_result, weak_areas=None, user_key=None):
     if weak_areas is None:
         weak_areas = []
     prompt = FEEDBACK_PROMPT.format(
@@ -43,7 +43,7 @@ async def generate_feedback(skill, current_level, target_level, evaluation_resul
         weak_areas=weak_areas or ["general improvement needed"],
     )
     try:
-        result = await llm_generate_json(prompt)
+        result = await llm_generate_json(prompt, user_key=user_key)
         # Normalize: support both camelCase and snake_case from LLM
         return {
             "personalizedMessage": result.get("personalizedMessage") or result.get("personalized_message", ""),

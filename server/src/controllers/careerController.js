@@ -38,7 +38,10 @@ exports.getCareerRoadmap = async (req, res) => {
       days: String(days),
     });
     const aiRes = await axios.post(`${AI}/roadmap`, formData, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        ...(req.headers['x-user-gemini-key'] ? { 'x-user-gemini-key': req.headers['x-user-gemini-key'] } : {}),
+      },
       timeout: 60000,
     });
     return res.json(aiRes.data);

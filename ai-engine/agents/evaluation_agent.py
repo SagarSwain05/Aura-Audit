@@ -73,7 +73,7 @@ def _evaluate_true_false(question: dict, answer: str) -> dict:
     }
 
 
-async def _evaluate_short_answer(question: dict, answer: str) -> dict:
+async def _evaluate_short_answer(question: dict, answer: str, user_key: str = None) -> dict:
     if not answer or len(answer.strip()) < 5:
         return {
             "questionId":    str(question["id"]),
@@ -104,7 +104,7 @@ Return JSON only:
 }}"""
 
     try:
-        result = await llm_generate_json(prompt)
+        result = await llm_generate_json(prompt, user_key=user_key)
         return {
             "questionId":    str(question["id"]),
             "score":         min(int(result.get("score", 0)), question.get("points", 10)),
@@ -129,7 +129,7 @@ Return JSON only:
         }
 
 
-async def _evaluate_code(question: dict, answer: str) -> dict:
+async def _evaluate_code(question: dict, answer: str, user_key: str = None) -> dict:
     if not answer or len(answer.strip()) < 5:
         return {
             "questionId":    str(question["id"]),
@@ -165,7 +165,7 @@ Return JSON only:
 }}"""
 
     try:
-        result = await llm_generate_json(prompt)
+        result = await llm_generate_json(prompt, user_key=user_key)
         return {
             "questionId":       str(question["id"]),
             "score":            min(int(result.get("score", 0)), question.get("points", 15)),
@@ -191,7 +191,7 @@ Return JSON only:
         }
 
 
-async def evaluate_assessment(questions: list, answers: list) -> dict:
+async def evaluate_assessment(questions: list, answers: list, user_key: str = None) -> dict:
     # Build answer map: question_id (as string) → answer text
     answer_map = {str(a.get("question_id", a.get("questionId", ""))): a.get("answer", "") for a in answers}
 
@@ -205,11 +205,11 @@ async def evaluate_assessment(questions: list, answers: list) -> dict:
         elif qtype == "true_false":
             tasks.append(asyncio.get_event_loop().run_in_executor(None, _evaluate_true_false, q, ans))
         elif qtype in ("short_answer", "essay"):
-            tasks.append(_evaluate_short_answer(q, ans))
+            tasks.append(_evaluate_short_answer(q, ans, user_key))
         elif qtype in ("code", "coding"):
-            tasks.append(_evaluate_code(q, ans))
+            tasks.append(_evaluate_code(q, ans, user_key))
         else:
-            tasks.append(_evaluate_short_answer(q, ans))
+            tasks.append(_evaluate_short_answer(q, ans, user_key))
 
     results = await asyncio.gather(*tasks)
 
