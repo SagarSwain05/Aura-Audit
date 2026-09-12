@@ -4,6 +4,7 @@ market demand pulse, and interview simulation.
 Uses unified llm_client (Gemini key pool → Groq fallback).
 """
 
+import hashlib
 from prompts import (
     RESUME_AUDITOR_PROMPT,
     GAP_ANALYSIS_PROMPT,
@@ -12,6 +13,19 @@ from prompts import (
     MARKET_DEMAND_PROMPT,
 )
 from services.llm_client import llm_generate_json
+from services.cache import get_or_compute
+
+# Roadmaps and market-demand data don't meaningfully change minute to minute
+# and many different users ask about the same common role/skill combos —
+# caching these (platform-pool calls only, not personal-key calls) cuts real
+# LLM call volume under load without affecting personalized results like
+# resume analysis or interview questions, which always call live.
+_CACHE_TTL_SECONDS = 6 * 3600
+
+
+def _cache_key(*parts) -> str:
+    raw = "|".join(str(p) for p in parts)
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 async def analyze_resume(resume_text: str, user_key: str = None) -> dict:
@@ -34,7 +48,10 @@ async def generate_roadmap(skills: list, dream_role: str, days: int = 30, user_k
         dream_role=dream_role,
         days=days,
     )
-    return await llm_generate_json(prompt, user_key=user_key)
+    if user_key:
+        return await llm_generate_json(prompt, user_key=user_key)
+    key = _cache_key("roadmap", sorted(s.lower() for s in skills), dream_role.lower(), days)
+    return await get_or_compute(key, _CACHE_TTL_SECONDS, lambda: llm_generate_json(prompt))
 
 
 async def generate_interview_questions(resume_text: str, role: str, skills: list = None, user_key: str = None) -> dict:
@@ -45,7 +62,10 @@ async def generate_interview_questions(resume_text: str, role: str, skills: list
 
 async def get_market_demand(skills: list, user_key: str = None) -> dict:
     prompt = MARKET_DEMAND_PROMPT.format(skills=", ".join(skills))
-    return await llm_generate_json(prompt, user_key=user_key)
+    if user_key:
+        return await llm_generate_json(prompt, user_key=user_key)
+    key = _cache_key("market_demand", sorted(s.lower() for s in skills))
+    return await get_or_compute(key, _CACHE_TTL_SECONDS, lambda: llm_generate_json(prompt))
 
 
 async def enhance_bullet(original: str, role_context: str = "", user_key: str = None) -> dict:
