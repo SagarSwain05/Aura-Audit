@@ -1,6 +1,7 @@
 const Student = require('../models/Student');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const { categorizeSkill } = require('../utils/skillCategorizer');
 
 // GET /api/student/profile
 exports.getProfile = async (req, res) => {
@@ -31,14 +32,20 @@ exports.updateProfile = async (req, res) => {
 
 // POST /api/student/skills
 exports.addSkill = async (req, res) => {
-  const { name, level } = req.body;
+  const { name, level, category } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ message: 'Skill name is required' });
   const student = await Student.findOne({ userId: req.user._id });
   if (!student) return res.status(404).json({ message: 'Profile not found' });
 
   const exists = student.skills.find(s => s.name.toLowerCase() === name.toLowerCase());
   if (exists) return res.status(409).json({ message: 'Skill already added' });
 
-  student.skills.push({ name, level: level || 'beginner' });
+  student.skills.push({
+    name: name.trim(),
+    level: level || 'beginner',
+    category: category || categorizeSkill(name),
+    source: 'manual',
+  });
   student.calculateCareerReadinessScore();
 
   // Award points for first skill add
@@ -50,17 +57,18 @@ exports.addSkill = async (req, res) => {
   res.status(201).json({ skills: student.skills, careerReadinessScore: student.careerReadinessScore });
 };
 
-// PUT /api/student/skills/:skillName
+// PUT /api/student/skills/:skillName — level and/or category
 exports.updateSkill = async (req, res) => {
   const { skillName } = req.params;
-  const { level } = req.body;
+  const { level, category } = req.body;
   const student = await Student.findOne({ userId: req.user._id });
   if (!student) return res.status(404).json({ message: 'Profile not found' });
 
   const skill = student.skills.find(s => s.name.toLowerCase() === skillName.toLowerCase());
   if (!skill) return res.status(404).json({ message: 'Skill not found' });
 
-  skill.level = level;
+  if (level) skill.level = level;
+  if (category) skill.category = category;
   student.calculateCareerReadinessScore();
   await student.save();
   res.json({ skills: student.skills });
@@ -70,7 +78,13 @@ exports.updateSkill = async (req, res) => {
 exports.removeSkill = async (req, res) => {
   const { skillName } = req.params;
   const student = await Student.findOne({ userId: req.user._id });
+  if (!student) return res.status(404).json({ message: 'Profile not found' });
+
+  const before = student.skills.length;
   student.skills = student.skills.filter(s => s.name.toLowerCase() !== skillName.toLowerCase());
+  if (student.skills.length === before) {
+    return res.status(404).json({ message: 'Skill not found' });
+  }
   student.calculateCareerReadinessScore();
   await student.save();
   res.json({ skills: student.skills });

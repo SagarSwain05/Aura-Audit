@@ -6,6 +6,7 @@ const Student = require('../models/Student');
 const Notification = require('../models/Notification');
 const { cloudinary } = require('../middleware/upload');
 const { makeFallbackRoadmap, makeFallbackInterview, makeFallbackBulletEnhancement } = require('../utils/aiFallbacks');
+const { categorizeSkill } = require('../utils/skillCategorizer');
 
 const AI_ENGINE_URL = (process.env.AI_ENGINE_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
@@ -148,12 +149,21 @@ async function processAuditAsync(audit, file, dreamRole, userGeminiKey) {
       student.careerPoints.total += points;
       student.careerPoints.history.push({ points, reason });
 
-      // Auto-add extracted skills to student profile if they don't exist
+      // Sync extracted skills into the student profile — every skill the
+      // resume shows, not just the first 5, so the profile actually reflects
+      // the latest resume. Never removes existing skills (manual entries or
+      // ones from an earlier resume) since there's no reliable signal that a
+      // skill not mentioned THIS time is actually gone.
       const extractedSkills = data.extracted_skills || [];
-      for (const skill of extractedSkills.slice(0, 5)) {
+      for (const skill of extractedSkills) {
         const skillName = typeof skill === 'string' ? skill : skill.name;
         if (skillName && !student.skills.find(s => s.name.toLowerCase() === skillName.toLowerCase())) {
-          student.skills.push({ name: skillName, level: 'intermediate' });
+          student.skills.push({
+            name: skillName,
+            level: 'intermediate',
+            category: categorizeSkill(skillName),
+            source: 'resume',
+          });
         }
       }
       student.calculateCareerReadinessScore();

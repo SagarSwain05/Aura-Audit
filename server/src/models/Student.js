@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const skillSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   level: { type: String, enum: ['beginner', 'intermediate', 'advanced', 'expert'], default: 'beginner' },
+  category: { type: String, enum: ['technical', 'communication', 'quantitative', 'real_world'], default: 'technical' },
+  source: { type: String, enum: ['manual', 'resume'], default: 'manual' },
   verified: { type: Boolean, default: false },
   addedAt: { type: Date, default: Date.now },
 }, { _id: false });

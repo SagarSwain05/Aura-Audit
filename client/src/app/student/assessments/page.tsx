@@ -52,6 +52,27 @@ export default function AssessmentsPage() {
 
   useEffect(() => { load() }, [])
 
+  // Coming from Skills page "Improve with Assessment" — prefill and open the
+  // generate modal instead of auto-submitting, so the user still confirms.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const prefillSkill = params.get('skill')
+    if (!prefillSkill) return
+    const prefillLevel = params.get('level')
+    const match = SKILL_OPTIONS.find((s) => s.toLowerCase() === prefillSkill.toLowerCase())
+    if (match) {
+      setSkill(match)
+    } else {
+      setSkill('custom')
+      setCustomSkill(prefillSkill)
+    }
+    if (prefillLevel && ['beginner', 'intermediate', 'advanced'].includes(prefillLevel)) {
+      setLevel(prefillLevel)
+    }
+    setShowModal(true)
+    window.history.replaceState(null, '', window.location.pathname)
+  }, [])
+
   const handleGenerate = async () => {
     const targetSkill = skill === 'custom' ? customSkill : skill
     if (!targetSkill) return toast.error('Select a skill')

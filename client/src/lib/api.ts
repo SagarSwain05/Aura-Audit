@@ -72,9 +72,10 @@ export const studentApi = {
   updateProfile: (data: Record<string, unknown>) => api.put('/api/student/profile', data),
   getDashboard: () => api.get('/api/student/dashboard'),
   getLeaderboard: () => api.get('/api/student/leaderboard'),
-  addSkill: (skill: { name: string; level: string }) => api.post('/api/student/skills', skill),
-  updateSkill: (skillId: string, data: { level: string }) => api.put(`/api/student/skills/${skillId}`, data),
-  removeSkill: (skillId: string) => api.delete(`/api/student/skills/${skillId}`),
+  addSkill: (skill: { name: string; level: string; category?: string }) => api.post('/api/student/skills', skill),
+  updateSkill: (skillName: string, data: { level?: string; category?: string }) =>
+    api.put(`/api/student/skills/${encodeURIComponent(skillName)}`, data),
+  removeSkill: (skillName: string) => api.delete(`/api/student/skills/${encodeURIComponent(skillName)}`),
   addCertification: (cert: Record<string, string>) => api.post('/api/student/certifications', cert),
   removeCertification: (certId: string) => api.delete(`/api/student/certifications/${certId}`),
   addProject: (project: Record<string, unknown>) => api.post('/api/student/projects', project),
