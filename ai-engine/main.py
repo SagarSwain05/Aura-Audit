@@ -4,6 +4,8 @@ Full-stack career platform AI: resume audit, assessment, RAG job matching, caree
 """
 
 import os
+import json
+import base64
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Header
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +18,7 @@ from parser import extract_text_from_bytes, detect_sections, count_metrics, find
 from auditor import analyze_resume, analyze_gap, generate_roadmap, generate_interview_questions, get_market_demand, enhance_bullet
 from matcher import get_top_matches
 from services.youtube_service import search_tutorials
+from services.pdf_editor import apply_redlines_to_pdf, PdfEditError
 from routers.assessment import router as assessment_router
 from routers.jobs import router as jobs_router
 from routers.live_jobs import router as live_jobs_router
@@ -161,10 +164,14 @@ async def roadmap_endpoint(
 async def interview_endpoint(
     resume_text: str = Form(default=""),
     role: str = Form(default="Software Engineer"),
+    skills: str = Form(default=""),
     x_user_gemini_key: Optional[str] = Header(default=None, alias="x-user-gemini-key"),
 ):
     try:
-        result = await generate_interview_questions(resume_text or "No resume provided", role, user_key=x_user_gemini_key or None)
+        skills_list = [s.strip() for s in skills.split(",") if s.strip()]
+        result = await generate_interview_questions(
+            resume_text or "No resume provided", role, skills=skills_list, user_key=x_user_gemini_key or None
+        )
         return JSONResponse(content=result)
     except Exception as e:
         raise HTTPException(500, str(e))
@@ -193,6 +200,41 @@ async def parse_only(file: UploadFile = File(...)):
         "pages": parsed["pages"],
         "sections": detect_sections(parsed["text"]),
         "metrics": count_metrics(parsed["text"]),
+    })
+
+
+@app.post("/edit-resume")
+async def edit_resume(file: UploadFile = File(...), edits: str = Form(...)):
+    """
+    In-place PDF text editing — replaces accepted redline text directly inside
+    the original resume PDF (search -> redact -> reinsert), preserving layout.
+    Best-effort: returns which edits applied vs. were skipped and why, never
+    a broken/corrupted PDF (see services/pdf_editor.py for the full rationale).
+    """
+    if not file.filename.endswith(".pdf"):
+        raise HTTPException(400, "Only PDF files are supported.")
+    pdf_bytes = await file.read()
+    if len(pdf_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(400, "File too large. Max 10 MB.")
+
+    try:
+        edit_list = json.loads(edits)
+    except Exception:
+        raise HTTPException(400, "`edits` must be a JSON array of {original, suggestion}.")
+    if not isinstance(edit_list, list) or not edit_list:
+        raise HTTPException(400, "`edits` must be a non-empty array.")
+
+    try:
+        result = apply_redlines_to_pdf(pdf_bytes, edit_list)
+    except PdfEditError as e:
+        raise HTTPException(422, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"PDF editing failed: {e}")
+
+    return JSONResponse(content={
+        "pdf_base64": base64.b64encode(result["pdf_bytes"]).decode("ascii"),
+        "applied": result["applied"],
+        "skipped": result["skipped"],
     })
 
 

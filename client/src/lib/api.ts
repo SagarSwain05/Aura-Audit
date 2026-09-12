@@ -60,6 +60,10 @@ export const auditApi = {
     api.post(`/api/audit/${id}/interview`, { role }),
   enhanceBullet: (original: string, roleContext?: string) =>
     api.post('/api/audit/enhance-bullet', { original, roleContext }),
+  saveRedlineAcceptance: (id: string, acceptedLineIndexes: number[]) =>
+    api.patch(`/api/audit/${id}/redlines`, { acceptedLineIndexes }),
+  downloadEditedResume: (id: string) =>
+    api.get(`/api/audit/${id}/download-edited`, { responseType: 'blob' }),
 }
 
 // ── Student ────────────────────────────────────────────

@@ -37,8 +37,9 @@ async def generate_roadmap(skills: list, dream_role: str, days: int = 30, user_k
     return await llm_generate_json(prompt, user_key=user_key)
 
 
-async def generate_interview_questions(resume_text: str, role: str, user_key: str = None) -> dict:
-    prompt = INTERVIEW_SIM_PROMPT.format(role=role, resume_text=resume_text[:3000])
+async def generate_interview_questions(resume_text: str, role: str, skills: list = None, user_key: str = None) -> dict:
+    skills_str = ", ".join(skills) if skills else "not specified"
+    prompt = INTERVIEW_SIM_PROMPT.format(role=role, skills=skills_str, resume_text=resume_text[:3000])
     return await llm_generate_json(prompt, user_key=user_key)
 
 

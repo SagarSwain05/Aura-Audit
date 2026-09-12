@@ -75,20 +75,20 @@ Dream role: {dream_role}
 Current extracted experience: {experience}
 
 Return a STRICT JSON gap analysis:
-{
+{{
   "dream_role": "",
   "readiness_score": 0,
   "gaps": [
-    {
+    {{
       "skill": "",
       "importance": "critical|high|medium",
       "category": "technical|tools|soft",
       "transferable_from": "null or e.g. 'Your React skills transfer to React Native'"
-    }
+    }}
   ],
   "strengths": ["List of standout strengths for this role"],
   "transferable_skills": ["Skills the candidate has that unexpectedly apply to the dream role"]
-}
+}}
 
 Be smart about TRANSFERABLE SKILLS:
 - MERN developer → Full Stack Java? Flag Node.js → Spring Boot architecture patterns
@@ -119,16 +119,25 @@ IMPORTANT RULES:
 7. Return ONLY valid JSON, no code blocks
 """
 
-INTERVIEW_SIM_PROMPT = """You are a senior technical interviewer at a top tech company in 2026.
+INTERVIEW_SIM_PROMPT = """You are a senior technical interviewer at a top tech company in 2026, running a REAL interview simulation — not a generic quiz.
+
 The candidate is applying for: {role}
 
-Resume / experience:
+Candidate's declared skills: {skills}
+
+Resume / experience (projects, roles, bullets):
 {resume_text}
 
-Generate 5 deep technical interview questions. Mix: technical concepts, project-specific, behavioral, and system design.
+Generate 8 interview questions that read like an actual live interview, grounded specifically in THIS candidate's stack and experience:
+- Name specific technologies/tools from their skills or resume in at least half the questions (e.g. "You listed {{a specific skill}} — walk me through how you used it in {{a specific project from their resume}}").
+- Include natural interview escalation: at least one question should be a realistic FOLLOW-UP probe that digs deeper on a claim a candidate might make (e.g. "You say you optimized performance — what exactly did you measure, and what was the before/after?"), simulating how a real interviewer pushes past a surface-level answer.
+- Include at least one "debug/tradeoff" style question tied to a technology they actually used (e.g. a realistic bug or design tradeoff in that stack), not a textbook definition question.
+- Mix categories: technical, project (dig into a specific named project), behavioral (STAR-style, grounded in their actual experience, not generic), system_design (scaled to their apparent seniority).
+- Avoid generic questions answerable without having read this resume — every question should feel like it could ONLY be asked of this specific candidate.
+- Scale difficulty realistically to the seniority implied by their resume (student/fresher → fundamentals + one stretch project question; experienced → deeper architecture/tradeoff questions).
 
 Return STRICT JSON (no markdown, no explanation):
-{{"questions": [{{"question": "question text here", "category": "technical", "difficulty": "medium", "hint": "what a strong answer covers"}}, {{"question": "second question", "category": "behavioral", "difficulty": "easy", "hint": "hint here"}}, {{"question": "third question", "category": "system_design", "difficulty": "hard", "hint": "hint here"}}, {{"question": "fourth question", "category": "project", "difficulty": "medium", "hint": "hint here"}}, {{"question": "fifth question", "category": "technical", "difficulty": "hard", "hint": "hint here"}}]}}
+{{"questions": [{{"question": "question text here", "category": "technical", "difficulty": "medium", "hint": "what a strong answer covers"}}, {{"question": "second question", "category": "behavioral", "difficulty": "easy", "hint": "hint here"}}, {{"question": "third question", "category": "system_design", "difficulty": "hard", "hint": "hint here"}}, {{"question": "fourth question", "category": "project", "difficulty": "medium", "hint": "hint here"}}, {{"question": "fifth question", "category": "technical", "difficulty": "hard", "hint": "hint here"}}, {{"question": "sixth question — a follow-up probe digging deeper on a likely claim", "category": "technical", "difficulty": "hard", "hint": "hint here"}}, {{"question": "seventh question — debug/tradeoff scenario tied to their stack", "category": "technical", "difficulty": "medium", "hint": "hint here"}}, {{"question": "eighth question", "category": "project", "difficulty": "medium", "hint": "hint here"}}]}}
 
 Return ONLY valid JSON. No extra text."""
 
@@ -140,14 +149,14 @@ based on job posting frequency, salary premiums, and growth trends.
 Also add the top 5 trending skills not in the list that complement them.
 
 Return STRICT JSON:
-{
-  "demand": { "skill_name": demand_percentage },
+{{
+  "demand": {{ "skill_name": demand_percentage }},
   "trending_additions": ["skill1", "skill2", "skill3", "skill4", "skill5"],
-  "hot_cities": {
+  "hot_cities": {{
     "Bangalore": ["top 3 skills in demand here"],
     "Hyderabad": ["top 3 skills in demand here"],
     "London": ["top 3 skills in demand here"],
     "New York": ["top 3 skills in demand here"]
-  }
-}
+  }}
+}}
 """

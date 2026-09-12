@@ -10,6 +10,8 @@ const {
   generateRoadmap,
   generateInterview,
   enhanceBullet,
+  saveRedlineAcceptance,
+  downloadEditedResume,
 } = require('../controllers/auditController');
 
 router.post('/', protect, upload.single('resume'), createAudit);
@@ -20,5 +22,7 @@ router.delete('/:id', protect, deleteAudit);
 router.post('/roadmap', protect, generateRoadmap);
 router.post('/:id/interview', protect, generateInterview);
 router.post('/enhance-bullet', protect, enhanceBullet);
+router.patch('/:id/redlines', protect, saveRedlineAcceptance);
+router.get('/:id/download-edited', protect, downloadEditedResume);
 
 module.exports = router;

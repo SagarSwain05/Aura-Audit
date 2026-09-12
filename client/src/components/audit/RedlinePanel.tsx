@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Check, X, ChevronDown, ChevronUp, Wand2, AlertTriangle, Info, Zap } from 'lucide-react'
+import { Check, X, ChevronDown, ChevronUp, Wand2, AlertTriangle, Info, Zap, Save, Download, Loader2 } from 'lucide-react'
 import type { Redline } from '@/types'
 import { getSeverityColor, getSeverityBadgeColor, getCategoryIcon } from '@/lib/utils'
 import { useAuditStore } from '@/store/useAuditStore'
@@ -133,6 +133,11 @@ function RedlineCard({ redline, onAccept }: { redline: Redline; onAccept: () => 
 export default function RedlinePanel({ redlines, auditId }: RedlinePanelProps) {
   const [filter, setFilter] = useState<typeof FILTERS[number]>('all')
   const { updateRedlineAccepted } = useAuditStore()
+  const [savedAcceptedIndexes, setSavedAcceptedIndexes] = useState<Set<number>>(
+    () => new Set(redlines.filter((r) => r.accepted).map((r) => r.line_index))
+  )
+  const [saving, setSaving] = useState(false)
+  const [downloading, setDownloading] = useState(false)
 
   const sorted = [...redlines].sort(
     (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]
@@ -148,6 +153,53 @@ export default function RedlinePanel({ redlines, auditId }: RedlinePanelProps) {
   }
 
   const acceptedCount = redlines.filter((r) => r.accepted).length
+  const currentAcceptedIndexes = redlines.filter((r) => r.accepted).map((r) => r.line_index)
+  const isDirty =
+    currentAcceptedIndexes.length !== savedAcceptedIndexes.size ||
+    currentAcceptedIndexes.some((i) => !savedAcceptedIndexes.has(i))
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await auditApi.saveRedlineAcceptance(auditId, currentAcceptedIndexes)
+      setSavedAcceptedIndexes(new Set(currentAcceptedIndexes))
+      toast.success('Changes saved')
+    } catch {
+      toast.error('Failed to save changes')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDownload = async () => {
+    setDownloading(true)
+    try {
+      const res = await auditApi.downloadEditedResume(auditId)
+      const applied = res.headers['x-edits-applied']
+      const skipped = res.headers['x-edits-skipped']
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'resume-edited.pdf'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      toast.success(
+        skipped && Number(skipped) > 0
+          ? `Downloaded — ${applied} edit(s) applied, ${skipped} couldn't be matched in the PDF layout`
+          : `Downloaded — ${applied} edit(s) applied`
+      )
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        'Download failed'
+      toast.error(message)
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -166,6 +218,33 @@ export default function RedlinePanel({ redlines, auditId }: RedlinePanelProps) {
             className="h-full bg-aura-gradient rounded-full transition-all duration-500"
             style={{ width: `${redlines.length ? (acceptedCount / redlines.length) * 100 : 0}%` }}
           />
+        </div>
+
+        {/* Save / Download */}
+        <div className="flex items-center gap-2 mb-3">
+          <button
+            onClick={handleSave}
+            disabled={!isDirty || saving}
+            className="btn-primary text-xs py-2 px-3 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            {isDirty ? 'Save Changes' : 'Saved'}
+          </button>
+          <button
+            onClick={handleDownload}
+            disabled={isDirty || savedAcceptedIndexes.size === 0 || downloading}
+            title={
+              isDirty
+                ? 'Save your changes first'
+                : savedAcceptedIndexes.size === 0
+                ? 'Accept and save at least one suggestion first'
+                : 'Download your resume with accepted edits applied in place'
+            }
+            className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+            Download Edited Resume
+          </button>
         </div>
 
         {/* Filters */}

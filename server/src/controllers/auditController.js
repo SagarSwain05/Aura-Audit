@@ -268,10 +268,11 @@ exports.generateInterview = async (req, res) => {
   if (!audit) return res.status(404).json({ message: 'Audit not found' });
 
   const { role } = req.body;
-  const resumeText = audit.extractedExperience?.join('\n') || audit.resumeText || '';
+  const resumeText = audit.extractedExperience?.join('\n') || '';
   const formData = new URLSearchParams({
     resume_text: resumeText.slice(0, 3000),
     role: role || audit.dreamRole || 'Software Engineer',
+    skills: (audit.extractedSkills || []).join(', '),
   });
   const aiResp = await axios.post(`${AI_ENGINE_URL}/interview`, formData, {
     headers: {
@@ -301,4 +302,73 @@ exports.enhanceBullet = async (req, res) => {
     return { data: makeFallbackBulletEnhancement(original) };
   });
   res.json(aiResp.data);
+};
+
+// PATCH /api/audit/:id/redlines — batch-save which redlines the user accepted.
+// Explicit save step (not per-click) so a burst of toggles is one write, and
+// so "accepted" state survives a page refresh (previously local-state-only).
+exports.saveRedlineAcceptance = async (req, res) => {
+  const { acceptedLineIndexes } = req.body;
+  if (!Array.isArray(acceptedLineIndexes)) {
+    return res.status(400).json({ message: 'acceptedLineIndexes must be an array' });
+  }
+
+  const audit = await Audit.findOne({ _id: req.params.id, user: req.user._id });
+  if (!audit) return res.status(404).json({ message: 'Audit not found' });
+
+  const acceptedSet = new Set(acceptedLineIndexes.map(Number));
+  audit.redlines.forEach((r) => {
+    r.accepted = acceptedSet.has(r.line_index);
+  });
+  await audit.save();
+
+  res.json({ redlines: audit.redlines });
+};
+
+// GET /api/audit/:id/download-edited — re-fetches the original PDF from
+// Cloudinary, applies accepted redlines in place via the AI engine's
+// PyMuPDF-based editor, and streams the result back as a file download.
+exports.downloadEditedResume = async (req, res) => {
+  const audit = await Audit.findOne({ _id: req.params.id, user: req.user._id });
+  if (!audit) return res.status(404).json({ message: 'Audit not found' });
+
+  const acceptedRedlines = (audit.redlines || []).filter((r) => r.accepted);
+  if (acceptedRedlines.length === 0) {
+    return res.status(400).json({ message: 'Accept at least one suggestion before downloading.' });
+  }
+
+  const pdfResponse = await axios.get(audit.resumeUrl, { responseType: 'arraybuffer', timeout: 30000 });
+  const pdfBuffer = Buffer.from(pdfResponse.data);
+
+  const formData = new FormData();
+  formData.append('file', pdfBuffer, { filename: 'resume.pdf', contentType: 'application/pdf' });
+  formData.append('edits', JSON.stringify(
+    acceptedRedlines.map((r) => ({ original: r.original, suggestion: r.suggestion }))
+  ));
+
+  let aiResp;
+  try {
+    aiResp = await axios.post(`${AI_ENGINE_URL}/edit-resume`, formData, {
+      headers: formData.getHeaders(),
+      timeout: 60000,
+    });
+  } catch (err) {
+    return res.status(502).json({ message: `Could not generate the edited resume: ${getAxiosErrorMessage(err)}` });
+  }
+
+  const { pdf_base64, applied = [], skipped = [] } = aiResp.data;
+  if (!pdf_base64) return res.status(502).json({ message: 'AI engine returned no PDF.' });
+
+  const editedBuffer = Buffer.from(pdf_base64, 'base64');
+  const filename = `${(audit.originalFilename || 'resume').replace(/\.pdf$/i, '')}-edited.pdf`;
+
+  res.set({
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': `attachment; filename="${filename}"`,
+    'Content-Length': editedBuffer.length,
+    'X-Edits-Applied': String(applied.length),
+    'X-Edits-Skipped': String(skipped.length),
+    'Access-Control-Expose-Headers': 'X-Edits-Applied, X-Edits-Skipped',
+  });
+  res.send(editedBuffer);
 };
