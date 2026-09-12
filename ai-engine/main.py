@@ -107,8 +107,15 @@ async def analyze(
     extracted_skills = audit_result.get("extracted_skills", [])
     extracted_experience = audit_result.get("extracted_experience", [])
 
-    job_matches = await get_top_matches(extracted_skills)
-    audit_result["job_matches"] = job_matches
+    # RESUME_AUDITOR_PROMPT already asks the LLM for job_matches derived from the
+    # WHOLE resume (skills, projects, experience) — this used to always be
+    # overwritten by a keyword match against a static list of only 10 job
+    # titles using skills alone, discarding the richer result and returning
+    # zero matches for any resume that didn't happen to fit one of those 10.
+    # Keep the LLM's own result; only fall back to the keyword matcher if it
+    # produced nothing.
+    if not audit_result.get("job_matches"):
+        audit_result["job_matches"] = await get_top_matches(extracted_skills)
 
     if dream_role:
         try:

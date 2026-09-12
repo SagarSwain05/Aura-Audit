@@ -23,7 +23,6 @@ interface AuditState {
   // Current audit
   currentAudit: Audit | null
   setCurrentAudit: (audit: Audit | null) => void
-  updateRedlineAccepted: (lineIndex: number, accepted: boolean) => void
 
   // Audit history
   audits: Partial<Audit>[]
@@ -73,17 +72,6 @@ export const useAuditStore = create<AuditState>()(
       // Audit
       currentAudit: null,
       setCurrentAudit: (audit) => set({ currentAudit: audit }),
-      updateRedlineAccepted: (lineIndex, accepted) =>
-        set((state) => ({
-          currentAudit: state.currentAudit
-            ? {
-                ...state.currentAudit,
-                redlines: state.currentAudit.redlines.map((r) =>
-                  r.line_index === lineIndex ? { ...r, accepted } : r
-                ),
-              }
-            : null,
-        })),
 
       // History
       audits: [],

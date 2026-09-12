@@ -40,6 +40,14 @@ Your analysis must cover:
 4. EXTRACTED EXPERIENCE: List each role/project as a brief string
 
 5. JOB MATCHES: Top 3 roles this resume qualifies for (>60% match)
+   Base the match on the CANDIDATE AS A WHOLE — not just a skill-keyword count.
+   Weigh the depth/complexity of their actual PROJECTS and EXPERIENCE (what
+   they built, scale, impact) alongside their listed skills. Two resumes with
+   the same skill list can and should get different roles/percentages if one
+   shows deeper hands-on project experience than the other. Don't restrict
+   yourself to a fixed list of job titles — pick whatever 3 roles this specific
+   candidate is genuinely best matched for, including adjacent/niche titles if
+   that's a better fit than a generic one.
    For each:
    - title: Standard job title
    - match_percentage: 0-100

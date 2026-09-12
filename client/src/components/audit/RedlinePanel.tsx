@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Check, X, ChevronDown, ChevronUp, Wand2, AlertTriangle, Info, Zap, Save, Download, Loader2 } from 'lucide-react'
 import type { Redline } from '@/types'
 import { getSeverityColor, getSeverityBadgeColor, getCategoryIcon } from '@/lib/utils'
-import { useAuditStore } from '@/store/useAuditStore'
 import { auditApi } from '@/lib/api'
 import toast from 'react-hot-toast'
 
@@ -132,28 +131,46 @@ function RedlineCard({ redline, onAccept }: { redline: Redline; onAccept: () => 
 
 export default function RedlinePanel({ redlines, auditId }: RedlinePanelProps) {
   const [filter, setFilter] = useState<typeof FILTERS[number]>('all')
-  const { updateRedlineAccepted } = useAuditStore()
+  // Owned entirely locally — NOT derived from a parent/global store. The audit
+  // page keeps its own separate local `audit` state that doesn't re-sync from
+  // the Zustand store on every change, so writing accept-toggles there was a
+  // silent no-op (click registered, nothing ever re-rendered). Local state
+  // here guarantees this panel always reflects what the user just clicked.
+  const [acceptedIndexes, setAcceptedIndexes] = useState<Set<number>>(
+    () => new Set(redlines.filter((r) => r.accepted).map((r) => r.line_index))
+  )
   const [savedAcceptedIndexes, setSavedAcceptedIndexes] = useState<Set<number>>(
     () => new Set(redlines.filter((r) => r.accepted).map((r) => r.line_index))
   )
   const [saving, setSaving] = useState(false)
   const [downloading, setDownloading] = useState(false)
 
-  const sorted = [...redlines].sort(
+  const toggleAccepted = (lineIndex: number) => {
+    setAcceptedIndexes((prev) => {
+      const next = new Set(prev)
+      if (next.has(lineIndex)) next.delete(lineIndex)
+      else next.add(lineIndex)
+      return next
+    })
+  }
+
+  const displayRedlines = redlines.map((r) => ({ ...r, accepted: acceptedIndexes.has(r.line_index) }))
+
+  const sorted = [...displayRedlines].sort(
     (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]
   )
 
   const filtered = filter === 'all' ? sorted : sorted.filter((r) => r.severity === filter)
 
   const counts = {
-    all: redlines.length,
-    critical: redlines.filter((r) => r.severity === 'critical').length,
-    warning: redlines.filter((r) => r.severity === 'warning').length,
-    improvement: redlines.filter((r) => r.severity === 'improvement').length,
+    all: displayRedlines.length,
+    critical: displayRedlines.filter((r) => r.severity === 'critical').length,
+    warning: displayRedlines.filter((r) => r.severity === 'warning').length,
+    improvement: displayRedlines.filter((r) => r.severity === 'improvement').length,
   }
 
-  const acceptedCount = redlines.filter((r) => r.accepted).length
-  const currentAcceptedIndexes = redlines.filter((r) => r.accepted).map((r) => r.line_index)
+  const acceptedCount = acceptedIndexes.size
+  const currentAcceptedIndexes = Array.from(acceptedIndexes)
   const isDirty =
     currentAcceptedIndexes.length !== savedAcceptedIndexes.size ||
     currentAcceptedIndexes.some((i) => !savedAcceptedIndexes.has(i))
@@ -208,7 +225,7 @@ export default function RedlinePanel({ redlines, auditId }: RedlinePanelProps) {
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold">AI Redlines</h3>
           <span className="text-xs text-aura-muted">
-            {acceptedCount}/{redlines.length} applied
+            {acceptedCount}/{displayRedlines.length} applied
           </span>
         </div>
 
@@ -216,7 +233,7 @@ export default function RedlinePanel({ redlines, auditId }: RedlinePanelProps) {
         <div className="h-1.5 bg-aura-border rounded-full overflow-hidden mb-3">
           <div
             className="h-full bg-aura-gradient rounded-full transition-all duration-500"
-            style={{ width: `${redlines.length ? (acceptedCount / redlines.length) * 100 : 0}%` }}
+            style={{ width: `${displayRedlines.length ? (acceptedCount / displayRedlines.length) * 100 : 0}%` }}
           />
         </div>
 
@@ -283,7 +300,7 @@ export default function RedlinePanel({ redlines, auditId }: RedlinePanelProps) {
               <RedlineCard
                 key={redline.line_index}
                 redline={redline}
-                onAccept={() => updateRedlineAccepted(redline.line_index, !redline.accepted)}
+                onAccept={() => toggleAccepted(redline.line_index)}
               />
             ))
           )}
