@@ -48,3 +48,4 @@ coverage/
 ai-engine/data/chroma_db/
 ai-engine/data/*.db
 ai-engine/data/*.bin
+.vercel

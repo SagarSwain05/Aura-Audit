@@ -4,6 +4,7 @@ Full-stack career platform AI: resume audit, assessment, RAG job matching, caree
 """
 
 import os
+import re
 import json
 import base64
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Header
@@ -79,6 +80,27 @@ async def ready():
     }
 
 
+def _fallback_extract_skills(resume_text: str) -> list:
+    """
+    Defense-in-depth: if the LLM's own EXTRACTED SKILLS list comes back empty
+    (observed for non-software-dev resumes, e.g. a "System Engineer"/sysadmin
+    resume, before the prompt was broadened to be occupation-agnostic), pull a
+    naive skill list from the resume's own detected "Skills" section instead
+    of letting job-matching and market-demand cascade to fully empty.
+    """
+    sections = detect_sections(resume_text)
+    skills_text = sections.get("skills", "")
+    if not skills_text:
+        return []
+    tokens = re.split(r"[,|/\n••;]+", skills_text)
+    skills = []
+    for t in tokens:
+        t = re.sub(r"^[\s\-:]+|[\s\-:]+$", "", t)
+        if 1 < len(t) <= 40 and not t.lower().startswith(("skill", "technolog", "tech stack", "expertise", "competenc")):
+            skills.append(t)
+    return skills[:25]
+
+
 # ── Resume Analysis (existing) ───────────────────────
 @app.post("/analyze")
 async def analyze(
@@ -106,6 +128,10 @@ async def analyze(
 
     extracted_skills = audit_result.get("extracted_skills", [])
     extracted_experience = audit_result.get("extracted_experience", [])
+
+    if not extracted_skills:
+        extracted_skills = _fallback_extract_skills(resume_text)
+        audit_result["extracted_skills"] = extracted_skills
 
     # RESUME_AUDITOR_PROMPT already asks the LLM for job_matches derived from the
     # WHOLE resume (skills, projects, experience) — this used to always be

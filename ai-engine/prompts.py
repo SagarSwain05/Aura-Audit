@@ -35,7 +35,18 @@ Your analysis must cover:
    - ats_compatibility: 2026 ATS standards compliance (keywords, format)
    - overall: Weighted average (technical 30%, impact 30%, formatting 20%, ats 20%)
 
-3. EXTRACTED SKILLS: List all technical skills mentioned (languages, frameworks, tools, databases)
+3. EXTRACTED SKILLS: List EVERY technical/professional skill mentioned, regardless of field —
+   this resume may NOT be a software developer's. Cover ALL of: programming languages,
+   frameworks/libraries, databases, cloud platforms (AWS/Azure/GCP), DevOps & infra tooling
+   (Docker, Kubernetes, Terraform, Ansible, Jenkins, CI/CD), OS & systems administration
+   (Linux, Unix, Windows Server, shell scripting), networking (TCP/IP, DNS, VPN, routing/
+   switching, firewalls), security tools & practices, monitoring/observability tools
+   (Prometheus, Grafana, Datadog), data/analytics tools (Excel, SQL, Tableau, Power BI),
+   design tools, hardware/embedded systems, industry-specific software, methodologies
+   (Agile, ITIL, Scrum), and relevant certifications. Extract skills from the ENTIRE
+   resume text, not just a dedicated "Skills" section — pull them from experience bullets
+   and project descriptions too. Never return an empty list if the resume mentions ANY
+   tool, technology, platform, or technical methodology by name.
 
 4. EXTRACTED EXPERIENCE: List each role/project as a brief string
 
