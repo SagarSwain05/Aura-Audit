@@ -18,7 +18,7 @@ from services.youtube_service import search_tutorials
 from routers.assessment import router as assessment_router
 from routers.jobs import router as jobs_router
 from routers.live_jobs import router as live_jobs_router
-from services.llm_client import provider_status
+from services.llm_client import provider_status, llm_generate
 
 app = FastAPI(
     title="Aura-Audit AI Engine",
@@ -54,11 +54,24 @@ async def health():
 
 @app.get("/ready")
 async def ready():
+    """Functional canary — actually calls the LLM instead of just checking key presence.
+    A deprecated/renamed model (as happened before) leaves keys 'configured' but every
+    real call failing; this catches that case instead of reporting false confidence."""
     providers = provider_status()
+    llm_ok = True
+    llm_error = None
+    try:
+        await llm_generate("Reply with the single word: ok", max_retries=1)
+    except Exception as e:
+        llm_ok = False
+        llm_error = str(e)[:200]
+
     return {
-        "status": "ready" if providers["has_any_llm_provider"] else "degraded",
+        "status": "ready" if providers["has_any_llm_provider"] and llm_ok else "degraded",
         "engine": "Aura-Audit v2.0.0",
         "providers": providers,
+        "llm_call_ok": llm_ok,
+        "llm_call_error": llm_error,
     }
 
 
@@ -80,10 +93,10 @@ async def analyze(
     if len(resume_text.strip()) < 100:
         raise HTTPException(422, "Could not extract meaningful text from this PDF.")
 
-    import asyncio
-    audit_result = await analyze_resume(resume_text)
-    if isinstance(audit_result, Exception):
-        raise HTTPException(500, str(audit_result))
+    try:
+        audit_result = await analyze_resume(resume_text)
+    except Exception as e:
+        raise HTTPException(500, f"Resume analysis failed: {e}")
 
     extracted_skills = audit_result.get("extracted_skills", [])
     extracted_experience = audit_result.get("extracted_experience", [])

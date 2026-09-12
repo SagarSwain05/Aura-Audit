@@ -102,7 +102,7 @@ def _call_gemini_sync(
         temperature=0.0 if json_mode else 0.3,
         **({"response_mime_type": "application/json"} if json_mode else {}),
     )
-    selected_model = model or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    selected_model = model or os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
     client = genai.Client(api_key=api_key)
     resp = client.models.generate_content(
         model=selected_model,
@@ -161,7 +161,7 @@ async def _try_gemini(
 
 # ── Groq Caller ──────────────────────────────────────────────────────────────
 
-_GROQ_MODEL = "llama-3.3-70b-versatile"  # fast, high context, free tier
+_GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")  # high-context, free tier
 
 def _call_groq_sync(prompt: str, api_key: str, json_mode: bool) -> str:
     from groq import Groq
@@ -227,21 +227,33 @@ async def llm_generate(
     raise RuntimeError("All LLM providers (Gemini + Groq) are currently unavailable.")
 
 
+def _parse_json_response(text: str) -> dict:
+    text = re.sub(r'^```(?:json)?\s*', '', text)
+    text = re.sub(r'\s*```$', '', text)
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end != -1:
+        return json.loads(text[start:end + 1])
+    return json.loads(text)
+
+
 async def llm_generate_json(
     prompt: str,
     user_key: Optional[str] = None,
     max_retries: int = 4,
 ) -> dict:
-    """Generate and parse JSON response. Returns {} on parse failure."""
+    """
+    Generate and parse JSON response.
+    Raises (does not silently swallow) if the provider is unavailable or the
+    response can't be parsed as JSON even after one retry — callers must
+    handle failure explicitly instead of receiving a misleadingly "successful" {}.
+    """
     text = await llm_generate(prompt, json_mode=True, user_key=user_key, max_retries=max_retries)
     try:
-        # Strip markdown fences if present
-        text = re.sub(r'^```(?:json)?\s*', '', text)
-        text = re.sub(r'\s*```$', '', text)
-        start, end = text.find("{"), text.rfind("}")
-        if start != -1 and end != -1:
-            return json.loads(text[start:end + 1])
-        return json.loads(text)
+        return _parse_json_response(text)
     except Exception as e:
-        print(f"⚠️  JSON parse failed: {e} | raw: {text[:200]}")
-        return {}
+        print(f"⚠️  JSON parse failed: {e} | raw: {text[:200]} — retrying once")
+        text = await llm_generate(prompt, json_mode=True, user_key=user_key, max_retries=max_retries)
+        try:
+            return _parse_json_response(text)
+        except Exception as e2:
+            raise RuntimeError(f"LLM returned unparseable JSON after retry: {e2} | raw: {text[:200]}")

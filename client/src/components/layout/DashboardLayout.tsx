@@ -113,9 +113,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     if (!user) return
-    const socket = socketIO(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001', { transports: ['websocket'] })
+    const socket = socketIO(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001', {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 10000,
+    })
     socketRef.current = socket
-    socket.emit('join', user._id)
+    const join = () => socket.emit('join', user._id)
+    join()
+    socket.on('connect', join)
+    socket.on('connect_error', (err) => console.warn('Notification socket connect error:', err.message))
     socket.on('notification', (notif) => {
       setNotifications([notif, ...notifications])
       setUnreadCount(unreadCount + 1)

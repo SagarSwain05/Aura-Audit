@@ -2,7 +2,7 @@ const axios = require('axios');
 const Assessment = require('../models/Assessment');
 const Student = require('../models/Student');
 const Notification = require('../models/Notification');
-const { makeFallbackAssessment } = require('../utils/aiFallbacks');
+const { makeFallbackAssessment, makeFallbackEvaluation } = require('../utils/aiFallbacks');
 
 const AI = process.env.AI_ENGINE_URL || 'http://localhost:8000';
 
@@ -56,13 +56,16 @@ exports.submitAssessment = async (req, res) => {
     answer: answer || '',
   }));
 
-  // Evaluate via AI
+  // Evaluate via AI (falls back to deterministic offline grading if the AI engine is down)
   const aiRes = await axios.post(`${AI}/api/v1/assessment/evaluate`, {
     questions: assessment.questions,
     answers: answersArray,
     skill: assessment.skill,
     current_level: assessment.currentLevel,
     target_level: assessment.targetLevel,
+  }, { timeout: 60000 }).catch((err) => {
+    console.warn('Assessment evaluation AI unavailable, using fallback grading:', err.message);
+    return { data: makeFallbackEvaluation(assessment.questions, answersArray) };
   });
 
   const { evaluation, feedback } = aiRes.data;

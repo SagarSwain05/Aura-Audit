@@ -5,7 +5,7 @@ const User = require('../models/User');
 const Student = require('../models/Student');
 const Notification = require('../models/Notification');
 const { cloudinary } = require('../middleware/upload');
-const { makeFallbackRoadmap } = require('../utils/aiFallbacks');
+const { makeFallbackRoadmap, makeFallbackInterview, makeFallbackBulletEnhancement } = require('../utils/aiFallbacks');
 
 const AI_ENGINE_URL = (process.env.AI_ENGINE_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
@@ -192,12 +192,27 @@ exports.getAudit = async (req, res) => {
   res.json({ audit });
 };
 
+// Must stay comfortably above the /analyze axios timeout (180s) used in
+// processAuditAsync, so this only fires for audits truly abandoned by a
+// server restart — not ones still legitimately in flight.
+const STUCK_PROCESSING_TIMEOUT_MS = 4 * 60 * 1000;
+
 exports.getAuditStatus = async (req, res) => {
   const audit = await Audit.findOne(
     { _id: req.params.id, user: req.user._id },
-    'status errorMessage auraScore'
+    'status errorMessage auraScore createdAt'
   );
   if (!audit) return res.status(404).json({ message: 'Audit not found' });
+
+  // No queue/cron exists to retry an audit if the server restarts mid-processing
+  // (fire-and-forget in processAuditAsync) — self-heal here instead of leaving
+  // the client polling a status that will never change.
+  if (audit.status === 'processing' && Date.now() - audit.createdAt.getTime() > STUCK_PROCESSING_TIMEOUT_MS) {
+    const message = 'Audit processing took too long and was likely interrupted by a server restart.';
+    await Audit.findByIdAndUpdate(audit._id, buildFallbackAuditResult(message));
+    return res.json({ status: 'completed', score: buildFallbackAuditResult(message).auraScore, error: message });
+  }
+
   res.json({ status: audit.status, score: audit.auraScore, error: audit.errorMessage });
 };
 
@@ -253,6 +268,9 @@ exports.generateInterview = async (req, res) => {
   const aiResp = await axios.post(`${AI_ENGINE_URL}/interview`, formData, {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     timeout: 60000,
+  }).catch((err) => {
+    console.warn('Interview AI unavailable, using fallback:', getAxiosErrorMessage(err));
+    return { data: makeFallbackInterview(role || audit.dreamRole) };
   });
   res.json(aiResp.data);
 };
@@ -264,6 +282,9 @@ exports.enhanceBullet = async (req, res) => {
   formData.append('role_context', roleContext || '');
   const aiResp = await axios.post(`${AI_ENGINE_URL}/enhance-bullet`, formData, {
     headers: formData.getHeaders(),
+  }).catch((err) => {
+    console.warn('Bullet enhancement AI unavailable, using fallback:', getAxiosErrorMessage(err));
+    return { data: makeFallbackBulletEnhancement(original) };
   });
   res.json(aiResp.data);
 };

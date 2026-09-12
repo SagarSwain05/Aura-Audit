@@ -178,8 +178,85 @@ const makeFallbackLiveJobs = (role = 'Software Engineer', location = 'India', nu
   };
 };
 
+const makeFallbackInterview = (role = 'Software Engineer') => {
+  const r = normalizeSkill(role) || 'Software Engineer';
+  return {
+    fallback: true,
+    questions: [
+      { question: `Walk me through the most technically challenging project on your resume as a ${r} candidate — what was the hardest decision you made?`, category: 'project', difficulty: 'medium', hint: 'Specific project, a real tradeoff, and the reasoning behind the choice.' },
+      { question: `What is a core concept a ${r} should understand deeply, and how would you explain it to a junior teammate?`, category: 'technical', difficulty: 'medium', hint: 'Clear definition, a concrete example, and a common misconception to avoid.' },
+      { question: 'Tell me about a time you disagreed with a teammate on a technical approach. How did you resolve it?', category: 'behavioral', difficulty: 'easy', hint: 'Situation, differing viewpoints, how you reached a resolution, the outcome.' },
+      { question: `How would you design a simple, scalable version of a system relevant to a ${r} role (e.g. handling growing load or data)?`, category: 'system_design', difficulty: 'hard', hint: 'Key components, bottlenecks, and how you would scale each one.' },
+      { question: 'Describe a bug that was hard to track down. What was your debugging process?', category: 'technical', difficulty: 'medium', hint: 'Reproduction steps, isolation strategy, root cause, and the fix.' },
+    ],
+    error: 'AI interview generation temporarily unavailable — showing general practice questions instead.',
+  };
+};
+
+const makeFallbackBulletEnhancement = (original = '') => ({
+  fallback: true,
+  enhanced: original,
+  reasoning: 'AI enhancement is temporarily unavailable. Try again shortly, or manually add a quantified result (%, time saved, scale) and a strong action verb to this bullet.',
+  error: 'AI enhancement temporarily unavailable.',
+});
+
+// Deterministic offline grading fallback for assessment submission when the AI
+// evaluator is unreachable — auto-gradable types (mcq/true_false) are scored
+// exactly against correct_answer; open-ended types get partial credit for effort
+// so a submission is never silently lost or blocked by an AI outage.
+const makeFallbackEvaluation = (questions = [], answersArray = []) => {
+  const answerByQ = new Map(answersArray.map((a) => [String(a.question_id), a.answer]));
+  const passThreshold = 70;
+  let totalScore = 0;
+  let totalPoints = 0;
+  let correctCount = 0;
+  const autoGradable = ['mcq', 'true_false'];
+
+  const results = questions.map((q) => {
+    const points = Number(q.points) || 0;
+    totalPoints += points;
+    const studentAnswer = String(answerByQ.get(String(q.id)) ?? '').trim();
+    let earned = 0;
+    let isCorrect = false;
+    let feedback;
+
+    if (autoGradable.includes(q.type)) {
+      isCorrect = studentAnswer.toLowerCase() === String(q.correct_answer ?? '').trim().toLowerCase();
+      earned = isCorrect ? points : 0;
+      feedback = isCorrect ? 'Correct.' : `Incorrect. Expected: ${q.correct_answer}`;
+    } else {
+      // Open-ended (code/short_answer): can't semantically grade offline —
+      // award half credit for a genuine attempt so effort isn't zeroed out.
+      earned = studentAnswer.length > 10 ? Math.round(points * 0.5) : 0;
+      feedback = 'AI grading was unavailable — partial credit given for this attempt. Ask a mentor or retry evaluation later for full feedback.';
+    }
+
+    totalScore += earned;
+    if (isCorrect) correctCount += 1;
+    return { question_id: q.id, answer: studentAnswer, is_correct: isCorrect, points_earned: earned, points_possible: points, feedback };
+  });
+
+  const percentage = totalPoints > 0 ? Math.round((totalScore / totalPoints) * 100) : 0;
+
+  return {
+    fallback: true,
+    evaluation: {
+      totalScore, totalPoints, percentage,
+      passed: percentage >= passThreshold,
+      passThreshold,
+      results,
+      correctCount,
+      totalQuestions: questions.length,
+    },
+    feedback: 'AI evaluation was temporarily unavailable, so open-ended answers received partial credit for effort rather than full semantic grading. Auto-gradable questions (MCQ/True-False) were scored exactly.',
+  };
+};
+
 module.exports = {
   makeFallbackRoadmap,
   makeFallbackAssessment,
   makeFallbackLiveJobs,
+  makeFallbackInterview,
+  makeFallbackBulletEnhancement,
+  makeFallbackEvaluation,
 };

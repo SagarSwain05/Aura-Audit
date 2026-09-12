@@ -61,7 +61,9 @@ services:
       - key: PORT
         value: 10000
       - key: GEMINI_MODEL
-        value: gemini-2.0-flash
+        value: gemini-3.8-flash
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_KEY_1
