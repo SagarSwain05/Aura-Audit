@@ -18,6 +18,21 @@ import fitz  # PyMuPDF
 
 _START_FONT_SIZE_CAP = 11
 _MIN_FONT_SIZE = 6
+
+# LLM-generated text commonly includes "smart" Unicode punctuation (non-breaking
+# hyphen, en/em dash, curly quotes) that base-14 fonts (WinAnsiEncoding) don't
+# cover — those glyphs render as "?" tofu boxes. Normalize to plain ASCII before
+# inserting so the visible output never has broken glyphs from this.
+_UNICODE_PUNCT_MAP = {
+    "‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-",
+    "‘": "'", "’": "'", "‚": "'",
+    "“": '"', "”": '"', "„": '"',
+    "…": "...", " ": " ", "•": "-",
+}
+
+
+def _sanitize_for_base14_font(text: str) -> str:
+    return "".join(_UNICODE_PUNCT_MAP.get(ch, ch) for ch in text)
 _PAGE_MARGIN = 36  # ~0.5in right boundary for reflowed text
 _LINE_SPACING = 1.15
 
@@ -108,7 +123,7 @@ def apply_redlines_to_pdf(pdf_bytes: bytes, edits: list) -> dict:
 
     for edit in edits:
         original = (edit.get("original") or "").strip()
-        suggestion = (edit.get("suggestion") or "").strip()
+        suggestion = _sanitize_for_base14_font((edit.get("suggestion") or "").strip())
         if not original or not suggestion:
             skipped.append({"original": original, "reason": "empty_original_or_suggestion"})
             continue
