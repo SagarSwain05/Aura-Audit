@@ -238,17 +238,31 @@ const makeFallbackEvaluation = (questions = [], answersArray = []) => {
 
   const percentage = totalPoints > 0 ? Math.round((totalScore / totalPoints) * 100) : 0;
 
+  const passed = percentage >= passThreshold;
+
   return {
     fallback: true,
     evaluation: {
       totalScore, totalPoints, percentage,
-      passed: percentage >= passThreshold,
+      passed,
       passThreshold,
       results,
       correctCount,
       totalQuestions: questions.length,
     },
-    feedback: 'AI evaluation was temporarily unavailable, so open-ended answers received partial credit for effort rather than full semantic grading. Auto-gradable questions (MCQ/True-False) were scored exactly.',
+    // Must match Assessment.feedback's schema shape (server/src/models/Assessment.js)
+    // — a plain string here throws a Mongoose cast error on save.
+    feedback: {
+      personalizedMessage: passed
+        ? `You scored ${percentage}%. AI evaluation was temporarily unavailable, so open-ended answers received partial credit for effort rather than full semantic grading — auto-gradable questions were scored exactly.`
+        : `You scored ${percentage}%, below the ${passThreshold}% pass mark. AI evaluation was temporarily unavailable, so open-ended answers only received partial credit for effort — try again shortly for full semantic grading.`,
+      strengths: correctCount > 0 ? ['Answered auto-gradable questions correctly'] : [],
+      areasForImprovement: passed ? [] : ['Retry this assessment once AI evaluation is available for full-credit grading on open-ended answers'],
+      recommendations: [],
+      nextSteps: ['Retry the assessment later for complete AI-graded feedback on your open-ended answers'],
+      estimatedReadinessDays: 14,
+      motivationalQuote: 'Every expert was once a beginner.',
+    },
   };
 };
 
