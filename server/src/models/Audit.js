@@ -54,10 +54,13 @@ const auditSchema = new mongoose.Schema({
     strengths: [String],
     transferable_skills: [String],
   },
-  marketDemand: { type: Map, of: Number },
+  // Plain Mixed objects, not Mongoose Map — skill names commonly contain
+  // dots (e.g. "Node.js", "ASP.NET"), which Mongoose Map keys reject outright,
+  // silently failing the whole audit save.
+  marketDemand: { type: mongoose.Schema.Types.Mixed, default: {} },
   marketMeta: {
     trending: [String],
-    hot_cities: { type: Map, of: [String] },
+    hot_cities: { type: mongoose.Schema.Types.Mixed, default: {} },
   },
   interviewQuestions: [{
     question: String,
