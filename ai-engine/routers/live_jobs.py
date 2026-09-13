@@ -27,6 +27,7 @@ class LiveJobsResponse(BaseModel):
     total: int
     jobs: List[dict]
     error: Optional[str] = None
+    location_exhausted: Optional[bool] = None
 
 
 @router.post("/jobs/live", response_model=LiveJobsResponse)
