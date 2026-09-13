@@ -153,6 +153,10 @@ exports.login = async (req, res) => {
 
   // Login does NOT require email verification
   const token = signToken(user._id);
+  if (user.role === 'student') {
+    // Fire-and-forget: powers the "recently active" signal on Alumni Connect
+    Student.updateOne({ userId: user._id }, { $set: { 'activityStats.lastLoginDate': new Date() } }).catch(() => {});
+  }
   res.json({ token, user: user.toSafeJSON() });
 };
 

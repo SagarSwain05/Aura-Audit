@@ -102,6 +102,17 @@ export const jobsApi = {
   getLocationCatalog: () => api.get('/api/jobs/catalog/locations'),
 }
 
+// ── Alumni ─────────────────────────────────────────────
+export const alumniApi = {
+  getDirectory: (params?: Record<string, string>) => api.get('/api/alumni/directory', { params }),
+  getMyProfile: () => api.get('/api/alumni/me'),
+  saveMyProfile: (data: Record<string, unknown>) => api.put('/api/alumni/me', data),
+  connect: (alumniId: string, message: string) => api.post(`/api/alumni/connect/${alumniId}`, { message }),
+  getRequests: () => api.get('/api/alumni/requests'),
+  respondToRequest: (id: string, action: 'accept' | 'decline') =>
+    api.put(`/api/alumni/requests/${id}/respond`, { action }),
+}
+
 // ── Assessment ─────────────────────────────────────────
 export const assessmentApi = {
   generate: (data: { skill: string; level?: string }) => api.post('/api/assessment/generate', data),

@@ -19,6 +19,7 @@ const careerRoutes = require('./routes/career');
 const companyRoutes = require('./routes/company');
 const universityRoutes = require('./routes/universityRoutes');
 const notificationRoutes = require('./routes/notifications');
+const alumniRoutes = require('./routes/alumni');
 const { getEmailProviderStatus } = require('./services/emailService');
 
 const app = express();
@@ -74,6 +75,7 @@ app.use('/api/career', careerRoutes);
 app.use('/api/company', companyRoutes);
 app.use('/api/university', universityRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/alumni', alumniRoutes);
 
 // ── Error Handler ──────────────────────────────────────
 app.use((err, req, res, next) => {
