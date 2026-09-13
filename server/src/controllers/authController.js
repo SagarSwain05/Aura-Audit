@@ -134,7 +134,13 @@ exports.resendOTP = async (req, res) => {
   user.emailOTP = otp;
   user.emailOTPExpiry = new Date(Date.now() + 10 * 60 * 1000);
   await user.save({ validateBeforeSave: false });
-  await sendOTPEmail(email, user.name, otp);
+
+  try {
+    await sendOTPEmail(email, user.name, otp);
+  } catch (emailErr) {
+    console.error('Resend OTP email error:', emailErr.message);
+    return res.status(502).json({ message: 'Failed to send verification code. Please try again shortly.' });
+  }
 
   res.json({ message: 'New verification code sent to your email' });
 };

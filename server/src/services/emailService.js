@@ -21,6 +21,72 @@ const getConfiguredProvider = () => {
   return null;
 };
 
+// ── Concurrency + retry infrastructure ──────────────────────────────────────
+// Under a burst (many signups/OTP-resends at once) an unbounded flood of
+// simultaneous provider calls both risks the provider's own rate limit
+// (Resend's free tier is 2 req/s) and holds open a pile of HTTP connections
+// for no benefit. Cap how many sends run at once and queue the rest instead
+// of firing everything simultaneously.
+const MAX_CONCURRENT_EMAIL_SENDS = Number(process.env.MAX_CONCURRENT_EMAIL_SENDS) || 5;
+const SEND_TIMEOUT_MS = Number(process.env.EMAIL_SEND_TIMEOUT_MS) || 12000;
+
+let activeSends = 0;
+const sendQueue = [];
+
+const acquireSendSlot = () => new Promise((resolve) => {
+  const tryAcquire = () => {
+    if (activeSends < MAX_CONCURRENT_EMAIL_SENDS) {
+      activeSends++;
+      resolve();
+    } else {
+      sendQueue.push(tryAcquire);
+    }
+  };
+  tryAcquire();
+});
+
+const releaseSendSlot = () => {
+  activeSends--;
+  const next = sendQueue.shift();
+  if (next) next();
+};
+
+const withTimeout = (promise, ms, label) => Promise.race([
+  promise,
+  new Promise((_, reject) => setTimeout(() => reject(new Error(`${label}_TIMEOUT`)), ms)),
+]);
+
+// Only retry failures that are plausibly transient — a provider-side rate
+// limit, a 5xx, or a network hiccup. Retrying a permanent rejection (bad
+// recipient, sandbox restriction, auth failure) just wastes the same time
+// three times over and delays the caller for no benefit.
+const isRetryable = (err) => {
+  const status = err.response?.status || err.statusCode;
+  if (status === 429) return true;
+  if (status >= 500 && status < 600) return true;
+  if (err.code === 'ECONNABORTED' || err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT') return true;
+  if (err.message?.endsWith('_TIMEOUT')) return true;
+  return false;
+};
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const withRetry = async (fn, { attempts = 3, baseDelayMs = 400 } = {}) => {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (!isRetryable(err) || i === attempts - 1) throw err;
+      await sleep(baseDelayMs * 2 ** i + Math.random() * 100);
+    }
+  }
+  throw lastErr;
+};
+
+// ── Providers ────────────────────────────────────────────────────────────
+
 const _sendBrevo = async (toEmail, name, subject, htmlContent) => {
   if (!process.env.BREVO_API_KEY) {
     throw new Error('EMAIL_NOT_CONFIGURED');
@@ -41,7 +107,7 @@ const _sendBrevo = async (toEmail, name, subject, htmlContent) => {
         'api-key': process.env.BREVO_API_KEY,
         'content-type': 'application/json',
       },
-      timeout: 10000,
+      timeout: SEND_TIMEOUT_MS,
     }
   );
   if (response.status !== 201 && response.status !== 200) {
@@ -57,15 +123,29 @@ const _sendResend = async (toEmail, name, subject, htmlContent) => {
   const sender = getSender();
   if (!sender.email) throw new Error('EMAIL_FROM_NOT_CONFIGURED');
   const resend = new Resend(process.env.RESEND_API_KEY);
-  const { error } = await resend.emails.send({
-    from: `${sender.name} <${sender.email}>`,
-    to: [toEmail],
-    subject,
-    html: htmlContent,
-  });
+  const { error } = await withTimeout(
+    resend.emails.send({
+      from: `${sender.name} <${sender.email}>`,
+      to: [toEmail],
+      subject,
+      html: htmlContent,
+    }),
+    SEND_TIMEOUT_MS,
+    'RESEND'
+  );
 
   if (error) {
-    throw new Error(`RESEND_SEND_FAILED:${error.message || 'unknown'}`);
+    // Resend's sandbox-domain restriction surfaces as a validation_error
+    // with this exact wording — call it out explicitly so it's diagnosable
+    // from logs in seconds instead of looking like a generic failure.
+    if (error.name === 'validation_error' && /own email address/i.test(error.message || '')) {
+      const e = new Error(`RESEND_SANDBOX_RESTRICTED: ${error.message} — verify a domain at resend.com/domains or switch provider.`);
+      e.statusCode = 403;
+      throw e;
+    }
+    const e = new Error(`RESEND_SEND_FAILED:${error.message || 'unknown'}`);
+    e.statusCode = error.statusCode;
+    throw e;
   }
 };
 
@@ -84,6 +164,7 @@ const _sendSmtp = async (toEmail, name, subject, htmlContent) => {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
+    connectionTimeout: SEND_TIMEOUT_MS,
   });
 
   await transporter.sendMail({
@@ -102,16 +183,21 @@ const sendEmail = async (toEmail, name, subject, htmlContent) => {
     throw new Error('EMAIL_NOT_CONFIGURED');
   }
 
+  await acquireSendSlot();
   try {
-    if (provider === 'brevo') await _sendBrevo(toEmail, name, subject, htmlContent);
-    else if (provider === 'resend') await _sendResend(toEmail, name, subject, htmlContent);
-    else await _sendSmtp(toEmail, name, subject, htmlContent);
+    await withRetry(async () => {
+      if (provider === 'brevo') await _sendBrevo(toEmail, name, subject, htmlContent);
+      else if (provider === 'resend') await _sendResend(toEmail, name, subject, htmlContent);
+      else await _sendSmtp(toEmail, name, subject, htmlContent);
+    });
 
     console.log(`Email sent via ${provider}: ${subject}`);
   } catch (err) {
     const message = err.response?.data?.message || err.response?.data?.error || err.message;
-    console.error(`Email send failed via ${provider}:`, message);
+    console.error(`Email send failed via ${provider} (to ${toEmail}):`, message);
     throw err;
+  } finally {
+    releaseSendSlot();
   }
 };
 
@@ -170,4 +256,6 @@ exports.getEmailProviderStatus = () => ({
   configured: Boolean(getConfiguredProvider() && getSender().email),
   provider: getConfiguredProvider() || 'none',
   senderConfigured: Boolean(getSender().email),
+  activeSends,
+  queuedSends: sendQueue.length,
 });
