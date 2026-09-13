@@ -187,7 +187,7 @@ exports.getLiveJobs = async (req, res) => {
   const student = await Student.findOne({ userId: req.user._id });
   if (!student) return res.status(404).json({ message: 'Student profile required' });
 
-  const { location = 'India', num_jobs = 10, role } = req.query;
+  const { location: queryLocation, num_jobs = 10, role } = req.query;
 
   // Forward user-provided Gemini key if present
   const userGeminiKey = req.headers['x-user-gemini-key'] || '';
@@ -195,12 +195,21 @@ exports.getLiveJobs = async (req, res) => {
 
   // Use user-supplied role override OR student's dream role
   const dreamRole = role || student.dreamRole || '';
+  // Prefer an explicit location typed by the user this request, then the
+  // profile's saved location (which the resume audit auto-fills if it was
+  // never manually set), and only fall back to a generic default last.
+  const location = queryLocation || student.location || 'India';
+  // Project titles give the query-builder real context beyond a bare skill
+  // list — this field existed on the AI-engine side but was never actually
+  // populated from here before.
+  const experienceTitles = (student.projects || []).map(p => p.title).filter(Boolean).slice(0, 5);
 
   try {
     const aiRes = await axios.post(`${AI}/api/v1/jobs/live`, {
       skills: student.skills.map(s => s.name),
       dream_role: dreamRole,
       location,
+      experience_titles: experienceTitles,
       num_jobs: Math.min(Number(num_jobs), 20),
       score_matches: true,
     }, { timeout: 90000, headers: aiHeaders }); // longer timeout — LLM scoring takes time

@@ -73,6 +73,10 @@ Your analysis must cover:
 7. MARKET DEMAND: JSON object of top skills → demand percentage in current market
    e.g. {"React": 87, "Node.js": 82, "AWS": 91, "Docker": 85}
 
+8. LOCATION: The candidate's city/state/country if mentioned anywhere in the resume
+   (contact info, address, "based in", etc.) — e.g. "Bangalore, India" or "Austin, TX".
+   Return an empty string "" if no location is mentioned. Never guess/invent one.
+
 Return ONLY valid JSON matching this exact structure:
 {
   "aura_score": { "technical_density": 0, "impact_quotient": 0, "formatting_health": 0, "ats_compatibility": 0, "overall": 0 },
@@ -81,7 +85,8 @@ Return ONLY valid JSON matching this exact structure:
   "extracted_experience": [],
   "job_matches": [{ "title": "", "match_percentage": 0, "matched_skills": [], "missing_skills": [], "salary_range": "", "demand_level": "" }],
   "interview_questions": [{ "question": "", "category": "", "difficulty": "", "hint": "" }],
-  "market_demand": {}
+  "market_demand": {},
+  "location": ""
 }
 """
 

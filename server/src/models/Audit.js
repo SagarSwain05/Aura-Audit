@@ -68,6 +68,7 @@ const auditSchema = new mongoose.Schema({
     difficulty: String,
     hint: String,
   }],
+  detectedLocation: { type: String, default: '' },
   resumeMeta: {
     pages: Number,
     word_count: Number,

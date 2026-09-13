@@ -55,7 +55,7 @@ export default function JobsPage() {
   const [liveFetched, setLiveFetched] = useState(false)
   const [tab, setTab] = useState<Tab>('recommended')
   const [search, setSearch] = useState('')
-  const [location, setLocation] = useState('India')
+  const [location, setLocation] = useState('')
   const [applying, setApplying] = useState<string | null>(null)
 
   useEffect(() => {
@@ -85,7 +85,10 @@ export default function JobsPage() {
     setLiveLoading(true)
     setLiveFetched(true)
     try {
-      const r = await jobsApi.getLiveJobs({ location: location || 'India', num_jobs: 12, role: liveRole || undefined })
+      // Leave location unset when the field is empty so the backend can use
+      // your profile's saved location (auto-filled from your resume) instead
+      // of forcing a generic default.
+      const r = await jobsApi.getLiveJobs({ location: location || undefined, num_jobs: 12, role: liveRole || undefined })
       setLiveJobs(r.data.jobs || [])
       setLiveQuery(r.data.query || '')
       if ((r.data.jobs || []).length === 0) {
@@ -222,7 +225,7 @@ export default function JobsPage() {
                     type="text"
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Location (e.g. Bangalore, India)"
+                    placeholder="Location — leave blank to use your profile/resume location"
                     className="input-field pl-9 text-sm"
                   />
                 </div>

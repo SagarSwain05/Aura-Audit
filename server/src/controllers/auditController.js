@@ -126,6 +126,7 @@ async function processAuditAsync(audit, file, dreamRole, userGeminiKey) {
       marketDemand: data.market_demand || {},
       marketMeta: data.market_meta || {},
       interviewQuestions: data.interview_questions || [],
+      detectedLocation: data.location || '',
       resumeMeta: data.resume_meta || {},
       status: 'completed',
     });
@@ -172,6 +173,14 @@ async function processAuditAsync(audit, file, dreamRole, userGeminiKey) {
           });
         }
       }
+      // Auto-fill profile location from the resume only if the student
+      // never set one themselves — a manually-entered location always wins,
+      // this only fills a genuine gap so live job search has something
+      // better than a hardcoded default to work with.
+      if (!student.location && data.location) {
+        student.location = data.location;
+      }
+
       student.calculateCareerReadinessScore();
       await student.save();
 
