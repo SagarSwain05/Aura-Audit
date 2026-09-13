@@ -6,6 +6,8 @@ const c = require('../controllers/jobController');
 router.get('/student/recommended', protect, requireRole('student'), c.getRecommendedJobs);
 router.get('/student/applications', protect, requireRole('student'), c.getMyApplications);
 router.get('/student/live', protect, requireRole('student'), c.getLiveJobs);
+router.get('/catalog/roles', c.getJobRoleCatalog);
+router.get('/catalog/locations', c.getLocationCatalog);
 
 // Public
 router.get('/', c.getJobs);

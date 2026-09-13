@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Briefcase, Search, MapPin, Building2, Clock, Star, ChevronRight,
@@ -8,6 +8,68 @@ import {
 } from 'lucide-react'
 import { jobsApi } from '@/lib/api'
 import toast from 'react-hot-toast'
+
+type Catalog = Record<string, string[]>
+
+/** Searchable typeahead against a flat list, with a "use my own text" escape hatch. */
+function CatalogPicker({
+  value, onChange, options, icon: Icon, placeholder,
+}: {
+  value: string
+  onChange: (v: string) => void
+  options: string[]
+  icon: typeof Search
+  placeholder: string
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [])
+
+  const suggestions = useMemo(() => {
+    const q = value.trim().toLowerCase()
+    if (!q) return options.slice(0, 8)
+    return options.filter((o) => o.toLowerCase().includes(q)).slice(0, 8)
+  }, [value, options])
+
+  return (
+    <div ref={ref} className="relative flex-1 min-w-40">
+      <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-aura-muted" />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        placeholder={placeholder}
+        className="input-field pl-9 text-sm w-full"
+      />
+      {open && (
+        <div className="absolute z-20 mt-1.5 w-full glass-card border border-white/10 rounded-xl overflow-hidden max-h-64 overflow-y-auto shadow-xl">
+          {suggestions.length > 0 ? (
+            suggestions.map((o) => (
+              <button
+                key={o}
+                onClick={() => { onChange(o); setOpen(false) }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-white/5 transition-colors"
+              >
+                <Icon className="w-3.5 h-3.5 shrink-0 text-aura-muted" />
+                <span className="truncate">{o}</span>
+              </button>
+            ))
+          ) : (
+            <p className="px-3 py-2.5 text-xs text-aura-muted">No catalog matches — your own text will be used as typed.</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface DBJob {
   _id: string
@@ -57,6 +119,16 @@ export default function JobsPage() {
   const [search, setSearch] = useState('')
   const [location, setLocation] = useState('')
   const [applying, setApplying] = useState<string | null>(null)
+  const [roleCatalog, setRoleCatalog] = useState<Catalog>({})
+  const [locationCatalog, setLocationCatalog] = useState<Catalog>({})
+
+  const flatRoles = useMemo(() => Object.values(roleCatalog).flat(), [roleCatalog])
+  const flatLocations = useMemo(() => Object.values(locationCatalog).flat(), [locationCatalog])
+
+  useEffect(() => {
+    jobsApi.getRoleCatalog().then((r) => setRoleCatalog(r.data.catalog || {})).catch(() => {})
+    jobsApi.getLocationCatalog().then((r) => setLocationCatalog(r.data.catalog || {})).catch(() => {})
+  }, [])
 
   useEffect(() => {
     Promise.allSettled([
@@ -209,26 +281,20 @@ export default function JobsPage() {
                 Searches live Google Jobs right now based on your skills & dream role. AI scores each match instantly.
               </p>
               <div className="flex gap-3 flex-wrap">
-                <div className="relative flex-1 min-w-40">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-aura-muted" />
-                  <input
-                    type="text"
-                    value={liveRole}
-                    onChange={(e) => setLiveRole(e.target.value)}
-                    placeholder="Job Role (e.g. Software Engineer)"
-                    className="input-field pl-9 text-sm"
-                  />
-                </div>
-                <div className="relative flex-1 min-w-40">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-aura-muted" />
-                  <input
-                    type="text"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Location — leave blank to use your profile/resume location"
-                    className="input-field pl-9 text-sm"
-                  />
-                </div>
+                <CatalogPicker
+                  value={liveRole}
+                  onChange={setLiveRole}
+                  options={flatRoles}
+                  icon={Search}
+                  placeholder="Job Role — search or type any role"
+                />
+                <CatalogPicker
+                  value={location}
+                  onChange={setLocation}
+                  options={flatLocations}
+                  icon={MapPin}
+                  placeholder="Location — leave blank to use your profile/resume location"
+                />
                 <button
                   onClick={fetchLiveJobs}
                   disabled={liveLoading}

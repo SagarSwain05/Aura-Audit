@@ -40,10 +40,13 @@ Student background:
 - Dream Role: {dream_role or 'Not specified'}
 - Experience/Projects: {exp_str}
 
-Generate a concise Google Jobs search query (3-6 words) that best matches
-what this student should apply for. Use common job title keywords.
-Examples: "Machine Learning Engineer jobs", "React Developer fresher jobs",
-"Data Analyst intern jobs", "DevOps Engineer entry level jobs".
+Generate a concise Google Jobs search query (2-4 words) that best matches
+what this student should apply for. Use ONLY the job title itself plus the
+word "jobs" — e.g. "Machine Learning Engineer jobs", "React Developer jobs",
+"Data Analyst jobs". Do NOT add experience-level qualifiers like "entry
+level", "fresher", "intern", or "junior"/"senior" — Google Jobs search
+matches far fewer (often zero) results when a free-text query is narrowed
+this way; experience level should not be part of the search text.
 
 Respond with ONLY the search query, nothing else."""
     try:
@@ -132,7 +135,10 @@ def _fetch_jobs_via_serpapi(query: str, location: str, num_jobs: int) -> List[Di
     try:
         results = GoogleSearch(params).get_dict()
         jobs_raw = results.get("jobs_results", [])
-        print(f"✅ SerpApi: {len(jobs_raw)} jobs for '{params['q']}'")
+        if not jobs_raw:
+            print(f"⚠️  SerpApi: 0 jobs for '{params['q']}' — {results.get('error', 'no error given')}")
+        else:
+            print(f"✅ SerpApi: {len(jobs_raw)} jobs for '{params['q']}'")
     except Exception as e:
         print(f"❌ SerpApi failed: {e}")
         return []
@@ -187,9 +193,33 @@ async def search_live_jobs(
     query = await _build_search_query(skills, dream_role, experience_titles or [], user_key)
     print(f"🔍 Live search query: {query}")
 
+    # Google Jobs' free-text matching can return zero results for an
+    # otherwise-reasonable query/location combo (empirically confirmed: even
+    # a simple, valid combination sometimes comes back empty on the first
+    # try). Rather than surface a bare "no jobs found" from one attempt,
+    # progressively broaden: same query without location, then a minimal
+    # role-only query, before genuinely giving up.
     raw_jobs = await asyncio.to_thread(_fetch_jobs_via_serpapi, query, location, num_jobs)
+    used_query, used_location = query, location
+
+    if not raw_jobs and location:
+        print("🔄 Zero results with location filter — retrying without it…")
+        raw_jobs = await asyncio.to_thread(_fetch_jobs_via_serpapi, query, "", num_jobs)
+        used_location = ""
+
     if not raw_jobs:
-        return {"query": query, "location": location, "total": 0, "jobs": []}
+        fallback_query = f"{dream_role} jobs" if dream_role else (f"{skills[0]} jobs" if skills else "Software Engineer jobs")
+        fallback_query = re.sub(r"[^a-zA-Z0-9\s]", "", fallback_query).strip()
+        if fallback_query.lower() != query.lower():
+            print(f"🔄 Still zero results — retrying with a simpler query: '{fallback_query}'")
+            raw_jobs = await asyncio.to_thread(_fetch_jobs_via_serpapi, fallback_query, location, num_jobs)
+            used_query, used_location = fallback_query, location
+            if not raw_jobs and location:
+                raw_jobs = await asyncio.to_thread(_fetch_jobs_via_serpapi, fallback_query, "", num_jobs)
+                used_location = ""
+
+    if not raw_jobs:
+        return {"query": used_query, "location": used_location or location, "total": 0, "jobs": []}
 
     if score_matches:
         sem = asyncio.Semaphore(5)
@@ -208,4 +238,4 @@ async def search_live_jobs(
     else:
         scored = raw_jobs
 
-    return {"query": query, "location": location, "total": len(scored), "jobs": scored}
+    return {"query": used_query, "location": used_location, "total": len(scored), "jobs": scored}

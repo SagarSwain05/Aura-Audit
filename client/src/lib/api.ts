@@ -98,6 +98,8 @@ export const jobsApi = {
   getMyApplications: () => api.get('/api/jobs/student/applications'),
   getLiveJobs: (params?: { location?: string; num_jobs?: string | number; role?: string }) =>
     api.get('/api/jobs/student/live', { params }),
+  getRoleCatalog: () => api.get('/api/jobs/catalog/roles'),
+  getLocationCatalog: () => api.get('/api/jobs/catalog/locations'),
 }
 
 // ── Assessment ─────────────────────────────────────────

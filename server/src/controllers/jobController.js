@@ -5,6 +5,18 @@ const Company = require('../models/Company');
 const Student = require('../models/Student');
 const Notification = require('../models/Notification');
 const { makeFallbackLiveJobs } = require('../utils/aiFallbacks');
+const { JOB_ROLE_CATALOG } = require('../data/jobRoleCatalog');
+const { LOCATION_CATALOG } = require('../data/locationCatalog');
+
+// GET /api/jobs/catalog/roles
+exports.getJobRoleCatalog = async (req, res) => {
+  res.json({ catalog: JOB_ROLE_CATALOG });
+};
+
+// GET /api/jobs/catalog/locations
+exports.getLocationCatalog = async (req, res) => {
+  res.json({ catalog: LOCATION_CATALOG });
+};
 
 const AI = process.env.AI_ENGINE_URL || 'http://localhost:8000';
 
