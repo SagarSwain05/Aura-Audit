@@ -31,22 +31,38 @@ async def _build_search_query(
     experience: List[str],
     user_key: Optional[str] = None,
 ) -> str:
+    # A role the student explicitly typed/selected (or set as their profile's
+    # target role) is a direct instruction, not a suggestion for the LLM to
+    # improve on. Search it literally — the previous behavior of running it
+    # through an LLM that also saw the student's skills let the model
+    # substitute a DIFFERENT role whenever skills leaned toward one profile
+    # (e.g. a "Mechanical Engineer" search kept coming back as "Full Stack
+    # Developer jobs" for a student with software skills), which made every
+    # search look identical regardless of what was actually searched for.
+    if dream_role and dream_role.strip():
+        query = re.sub(r"[^a-zA-Z0-9\s]", "", dream_role).strip()
+        if not query.lower().endswith("jobs"):
+            query += " jobs"
+        return query
+
+    # No explicit role at all (e.g. a bare "recommended for you" pull with no
+    # dream role set) — only here does it make sense to infer a role from
+    # skills via the LLM.
     skills_str = ", ".join(skills[:10]) if skills else "general"
     exp_str = ", ".join(experience[:3]) if experience else ""
     prompt = f"""You are a career assistant helping a student find jobs.
 
 Student background:
 - Skills: {skills_str}
-- Dream Role: {dream_role or 'Not specified'}
 - Experience/Projects: {exp_str}
 
-Generate a concise Google Jobs search query (2-4 words) that best matches
-what this student should apply for. Use ONLY the job title itself plus the
-word "jobs" — e.g. "Machine Learning Engineer jobs", "React Developer jobs",
-"Data Analyst jobs". Do NOT add experience-level qualifiers like "entry
-level", "fresher", "intern", or "junior"/"senior" — Google Jobs search
-matches far fewer (often zero) results when a free-text query is narrowed
-this way; experience level should not be part of the search text.
+The student has not set a target role. Infer the single most fitting job
+title from their skills/experience and generate a concise Google Jobs search
+query (2-4 words): the job title itself plus the word "jobs" — e.g. "Machine
+Learning Engineer jobs", "React Developer jobs", "Data Analyst jobs". Do NOT
+add experience-level qualifiers like "entry level", "fresher", "intern", or
+"junior"/"senior" — Google Jobs search matches far fewer (often zero) results
+when a free-text query is narrowed this way.
 
 Respond with ONLY the search query, nothing else."""
     try:
