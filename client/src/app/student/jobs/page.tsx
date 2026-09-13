@@ -110,6 +110,8 @@ export default function JobsPage() {
   const [recommended, setRecommended] = useState<DBJob[]>([])
   const [liveJobs, setLiveJobs] = useState<LiveJob[]>([])
   const [liveQuery, setLiveQuery] = useState('')
+  const [liveLocation, setLiveLocation] = useState('')
+  const [liveLocationExhausted, setLiveLocationExhausted] = useState(false)
   const [liveRole, setLiveRole] = useState('')
   const [applied, setApplied] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
@@ -163,8 +165,14 @@ export default function JobsPage() {
       const r = await jobsApi.getLiveJobs({ location: location || undefined, num_jobs: 12, role: liveRole || undefined })
       setLiveJobs(r.data.jobs || [])
       setLiveQuery(r.data.query || '')
+      setLiveLocation(r.data.location || '')
+      setLiveLocationExhausted(!!r.data.location_exhausted)
       if ((r.data.jobs || []).length === 0) {
-        toast('No live results found. Try a different location.', { icon: 'ℹ️' })
+        if (r.data.location_exhausted) {
+          toast(`No live openings found specifically in "${r.data.location}" right now. Try a nearby city or leave location blank.`, { icon: '📍', duration: 5000 })
+        } else {
+          toast('No live results found. Try a different role.', { icon: 'ℹ️' })
+        }
       }
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } }
@@ -311,7 +319,10 @@ export default function JobsPage() {
               {liveQuery && (
                 <p className="text-xs text-aura-muted mt-3">
                   Search query: <span className="text-aura-purple-light font-medium">"{liveQuery}"</span>
-                  {liveJobs.length > 0 && <span> · {liveJobs.length} jobs found</span>}
+                  {liveLocation && (
+                    <span> in <span className="text-aura-purple-light font-medium">{liveLocation}</span></span>
+                  )}
+                  {liveJobs.length > 0 && <span> · {liveJobs.length} jobs found — all confirmed in this location</span>}
                 </p>
               )}
             </div>
@@ -337,8 +348,16 @@ export default function JobsPage() {
             ) : liveFetched && liveJobs.length === 0 ? (
               <div className="glass-card p-12 text-center">
                 <AlertCircle className="w-10 h-10 mx-auto mb-3 text-yellow-400 opacity-60" />
-                <p className="text-aura-muted mb-1">No live jobs found</p>
-                <p className="text-xs text-aura-muted">Try a different location or add more skills to your profile</p>
+                <p className="text-aura-muted mb-1">
+                  {liveLocationExhausted
+                    ? `No live openings found specifically in "${liveLocation}" right now`
+                    : 'No live jobs found'}
+                </p>
+                <p className="text-xs text-aura-muted">
+                  {liveLocationExhausted
+                    ? 'We only show jobs confirmed in your exact chosen location — try a nearby city, a broader region, or leave location blank.'
+                    : 'Try a different role or add more skills to your profile'}
+                </p>
               </div>
             ) : !liveFetched ? (
               <div className="glass-card p-12 text-center border-dashed">

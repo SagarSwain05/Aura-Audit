@@ -130,6 +130,47 @@ Respond ONLY in this exact JSON format:
 
 # ── SerpApi Fetcher ───────────────────────────────────────────────────────────
 
+# Google Jobs frequently returns results geocoded to a city's official/
+# alternate name rather than the one a user searched with (e.g. asking for
+# "Bangalore" comes back tagged "Bengaluru"). A strict substring check
+# without this map would wrongly reject perfectly-correct results.
+_CITY_ALIASES = {
+    "bangalore": "bengaluru", "bombay": "mumbai", "calcutta": "kolkata",
+    "madras": "chennai", "cochin": "kochi", "trivandrum": "thiruvananthapuram",
+    "mysore": "mysuru", "baroda": "vadodara", "poona": "pune",
+    "nyc": "new york", "washington dc": "washington",
+}
+
+
+def _location_matches(job_location: str, target_location: str) -> bool:
+    """Strict check that a returned job is actually IN the requested place.
+
+    Google Jobs' `location` param nudges ranking but does not guarantee every
+    result is scoped to it — remote/national postings can slip through. We
+    only trust a job as location-matched if the requested place-name (city,
+    or the first token of a "City, State" pick) — or its known alias —
+    literally appears in the job's own location string.
+    """
+    if not target_location:
+        return True
+    if not job_location:
+        return False
+    target_token = target_location.split(",")[0].strip().lower()
+    if not target_token:
+        return True
+    job_location_lower = job_location.lower()
+    if target_token in job_location_lower:
+        return True
+    alias = _CITY_ALIASES.get(target_token)
+    if alias and alias in job_location_lower:
+        return True
+    # Also check the reverse direction (target given as the alias itself).
+    for canonical, alt in _CITY_ALIASES.items():
+        if alt == target_token and canonical in job_location_lower:
+            return True
+    return False
+
+
 def _fetch_jobs_via_serpapi(query: str, location: str, num_jobs: int) -> List[Dict[str, Any]]:
     try:
         from serpapi import GoogleSearch
@@ -160,7 +201,14 @@ def _fetch_jobs_via_serpapi(query: str, location: str, num_jobs: int) -> List[Di
         return []
 
     jobs = []
-    for j in jobs_raw[:num_jobs]:
+    # Pull from the full result set (not just the first num_jobs) since the
+    # strict location filter below can drop entries — we still want up to
+    # num_jobs matches, not num_jobs-minus-whatever-got-filtered.
+    for j in jobs_raw:
+        job_location = j.get("location", "")
+        if location_clean and not _location_matches(job_location, location_clean):
+            continue
+
         ext = j.get("detected_extensions", {})
         apply_link = (
             j.get("apply_link")
@@ -175,7 +223,7 @@ def _fetch_jobs_via_serpapi(query: str, location: str, num_jobs: int) -> List[Di
         jobs.append({
             "title": j.get("title", ""),
             "company": j.get("company_name", ""),
-            "location": j.get("location", ""),
+            "location": job_location,
             "description": (j.get("description") or "")[:500],
             "apply_link": apply_link,
             "salary": salary,
@@ -183,6 +231,12 @@ def _fetch_jobs_via_serpapi(query: str, location: str, num_jobs: int) -> List[Di
             "posted_at": ext.get("posted_at", ""),
             "source": "google_jobs_live",
         })
+        if len(jobs) >= num_jobs:
+            break
+
+    if location_clean and len(jobs) < len(jobs_raw[:num_jobs]):
+        print(f"📍 Location filter kept {len(jobs)}/{len(jobs_raw)} results strictly matching '{location_clean}'")
+
     return jobs
 
 
@@ -210,32 +264,33 @@ async def search_live_jobs(
     print(f"🔍 Live search query: {query}")
 
     # Google Jobs' free-text matching can return zero results for an
-    # otherwise-reasonable query/location combo (empirically confirmed: even
-    # a simple, valid combination sometimes comes back empty on the first
-    # try). Rather than surface a bare "no jobs found" from one attempt,
-    # progressively broaden: same query without location, then a minimal
-    # role-only query, before genuinely giving up.
+    # otherwise-reasonable query/location combo. If that happens we retry
+    # with a simpler query — but we NEVER drop the location filter to get
+    # results, because that silently returns jobs from anywhere in the
+    # world (confirmed: a "Nuclear Engineer" search for "Nashik" fell back
+    # to jobs in Washington/Kansas/Iowa with no indication anything had
+    # changed). A location the user picked is a hard constraint, not a
+    # suggestion — if nothing matches it, we say so honestly instead of
+    # quietly substituting unrelated results.
     raw_jobs = await asyncio.to_thread(_fetch_jobs_via_serpapi, query, location, num_jobs)
     used_query, used_location = query, location
-
-    if not raw_jobs and location:
-        print("🔄 Zero results with location filter — retrying without it…")
-        raw_jobs = await asyncio.to_thread(_fetch_jobs_via_serpapi, query, "", num_jobs)
-        used_location = ""
 
     if not raw_jobs:
         fallback_query = f"{dream_role} jobs" if dream_role else (f"{skills[0]} jobs" if skills else "Software Engineer jobs")
         fallback_query = re.sub(r"[^a-zA-Z0-9\s]", "", fallback_query).strip()
         if fallback_query.lower() != query.lower():
-            print(f"🔄 Still zero results — retrying with a simpler query: '{fallback_query}'")
+            print(f"🔄 Zero results — retrying with a simpler query (same location): '{fallback_query}'")
             raw_jobs = await asyncio.to_thread(_fetch_jobs_via_serpapi, fallback_query, location, num_jobs)
-            used_query, used_location = fallback_query, location
-            if not raw_jobs and location:
-                raw_jobs = await asyncio.to_thread(_fetch_jobs_via_serpapi, fallback_query, "", num_jobs)
-                used_location = ""
+            used_query = fallback_query
 
     if not raw_jobs:
-        return {"query": used_query, "location": used_location or location, "total": 0, "jobs": []}
+        return {
+            "query": used_query,
+            "location": used_location,
+            "total": 0,
+            "jobs": [],
+            "location_exhausted": bool(location),
+        }
 
     if score_matches:
         sem = asyncio.Semaphore(5)
