@@ -63,7 +63,7 @@ exports.getDirectory = async (req, res) => {
   let results = await Alumni.find(alumniQuery)
     .populate({
       path: 'student',
-      select: 'name profilePic location department year socialLinks email activityStats.lastLoginDate university',
+      select: 'userId name profilePic location department year socialLinks email activityStats.lastLoginDate university',
       populate: { path: 'university', select: 'name' },
     })
     .sort({ updatedAt: -1 })
