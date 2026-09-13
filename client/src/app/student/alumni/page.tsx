@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Users, Linkedin, MapPin, Briefcase, Search, GraduationCap, Building2,
-  Loader2, UserPlus, Check, X, Clock, Mail, Sparkles, Inbox, Send, Circle,
+  Loader2, UserPlus, Check, X, Clock, Mail, Sparkles, Inbox, Send, Circle, BadgeCheck,
 } from 'lucide-react'
 import { alumniApi, jobsApi, studentApi } from '@/lib/api'
 import toast from 'react-hot-toast'
@@ -87,6 +87,7 @@ interface AlumniCard {
   bio: string
   isAvailableForMentorship: boolean
   mentorshipAreas: string[]
+  verified: boolean
   linkedinUrl: string
   recentlyActive: boolean
   connectionStatus: 'none' | 'pending_sent' | 'pending_received' | 'connected'
@@ -431,7 +432,14 @@ export default function AlumniPage() {
                         )}
                       </div>
                       <div>
-                        <p className="font-semibold text-sm">{a.name}</p>
+                        <div className="flex items-center gap-1">
+                          <p className="font-semibold text-sm">{a.name}</p>
+                          {a.verified && (
+                            <span title="Verified by their university placement office">
+                              <BadgeCheck className="w-3.5 h-3.5 text-sky-400 fill-sky-400/20" />
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-aura-muted">
                           {a.university || 'Aura-Audit'}{a.graduationYear ? ` · Class of ${a.graduationYear}` : ''}
                         </p>

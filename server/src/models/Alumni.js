@@ -12,6 +12,11 @@ const alumniSchema = new mongoose.Schema({
   bio: { type: String, default: '' },
   linkedinUrl: { type: String, default: '' },
   graduationYear: Number,
+  // True when a university/TPO listed this alumnus from their own verified
+  // placement records, rather than the student self-declaring. Surfaced in
+  // the directory as a trust signal, same idea as LinkedIn's verified badge.
+  verified: { type: Boolean, default: false },
+  verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'University', default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Alumni', alumniSchema);

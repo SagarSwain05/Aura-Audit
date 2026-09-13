@@ -66,7 +66,7 @@ exports.getDirectory = async (req, res) => {
       select: 'userId name profilePic location department year socialLinks email activityStats.lastLoginDate university',
       populate: { path: 'university', select: 'name' },
     })
-    .sort({ updatedAt: -1 })
+    .sort({ verified: -1, updatedAt: -1 })
     .lean();
 
   // Drop any Alumni doc whose linked Student got deleted since (orphan safety)
@@ -128,6 +128,7 @@ exports.getDirectory = async (req, res) => {
       bio: a.bio || '',
       isAvailableForMentorship: !!a.isAvailableForMentorship,
       mentorshipAreas: a.mentorshipAreas || [],
+      verified: !!a.verified,
       linkedinUrl: a.linkedinUrl || a.student.socialLinks?.linkedin || '',
       recentlyActive: !!(a.student.activityStats?.lastLoginDate &&
         (now - new Date(a.student.activityStats.lastLoginDate).getTime()) < activeCutoff),

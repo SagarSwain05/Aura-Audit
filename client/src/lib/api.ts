@@ -155,6 +155,10 @@ export const universityApi = {
   getPendingCompanies: () => api.get('/api/university/companies/pending'),
   verifyCompany: (id: string, data: { status: string; comment?: string }) =>
     api.put(`/api/university/companies/${id}/verify`, data),
+  listStudentAsAlumni: (id: string, data?: Record<string, unknown>) =>
+    api.post(`/api/university/students/${id}/list-as-alumni`, data || {}),
+  unlistStudentAsAlumni: (id: string) => api.delete(`/api/university/students/${id}/list-as-alumni`),
+  bulkListPlacedAsAlumni: () => api.post('/api/university/students/bulk-list-as-alumni'),
 }
 
 // ── Notifications ──────────────────────────────────────

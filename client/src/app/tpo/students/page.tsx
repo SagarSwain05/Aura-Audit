@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Users, Search, Filter, Star, ChevronRight, Trash2, Edit2, X, Loader2 } from 'lucide-react'
+import { Users, Search, Filter, Star, ChevronRight, Trash2, Edit2, X, Loader2, GraduationCap, CheckCircle2 } from 'lucide-react'
 import { universityApi } from '@/lib/api'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
@@ -18,6 +18,7 @@ interface Student {
   isPlaced?: boolean
   skills: { name: string }[]
   rollNumber?: string
+  alumniListed?: boolean
 }
 
 export default function TPOStudentsPage() {
@@ -27,6 +28,8 @@ export default function TPOStudentsPage() {
   const [filters, setFilters] = useState({ department: '', year: '', minCGPA: '', isPlaced: '' })
   const [showFilters, setShowFilters] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [listingId, setListingId] = useState<string | null>(null)
+  const [bulkListing, setBulkListing] = useState(false)
 
   const load = (params?: Record<string, string>) => {
     setLoading(true)
@@ -59,6 +62,34 @@ export default function TPOStudentsPage() {
     }
   }
 
+  const handleListAsAlumni = async (id: string) => {
+    setListingId(id)
+    try {
+      await universityApi.listStudentAsAlumni(id)
+      setStudents((prev) => prev.map((s) => s._id === id ? { ...s, alumniListed: true } : s))
+      toast.success('Listed in Alumni Connect')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } }
+      toast.error(e.response?.data?.message || 'Failed to list as alumni')
+    } finally {
+      setListingId(null)
+    }
+  }
+
+  const handleBulkListAsAlumni = async () => {
+    setBulkListing(true)
+    try {
+      const r = await universityApi.bulkListPlacedAsAlumni()
+      const { listed, alreadyListed, totalPlaced } = r.data
+      toast.success(`Listed ${listed} placed student${listed === 1 ? '' : 's'} as alumni (${alreadyListed} already listed, ${totalPlaced} total placed)`)
+      load()
+    } catch {
+      toast.error('Failed to bulk-list alumni')
+    } finally {
+      setBulkListing(false)
+    }
+  }
+
   const scoreColor = (s: number) => s >= 70 ? 'text-emerald-400' : s >= 40 ? 'text-yellow-400' : 'text-red-400'
 
   return (
@@ -68,9 +99,20 @@ export default function TPOStudentsPage() {
           <h1 className="text-2xl font-bold">Students</h1>
           <p className="text-aura-muted text-sm mt-1">{students.length} students registered</p>
         </div>
-        <Link href="/tpo/upload" className="btn-primary text-sm px-4 py-2 flex items-center gap-2">
-          <Users className="w-4 h-4" /> Batch Upload
-        </Link>
+        <div className="flex gap-2">
+          <button
+            onClick={handleBulkListAsAlumni}
+            disabled={bulkListing}
+            className="btn-secondary text-sm px-4 py-2 flex items-center gap-2 disabled:opacity-50"
+            title="List every placed student as a verified alumnus in Alumni Connect"
+          >
+            {bulkListing ? <Loader2 className="w-4 h-4 animate-spin" /> : <GraduationCap className="w-4 h-4" />}
+            List Placed as Alumni
+          </button>
+          <Link href="/tpo/upload" className="btn-primary text-sm px-4 py-2 flex items-center gap-2">
+            <Users className="w-4 h-4" /> Batch Upload
+          </Link>
+        </div>
       </div>
 
       {/* Search bar */}
@@ -161,7 +203,24 @@ export default function TPOStudentsPage() {
                   <p className="text-xs text-aura-muted">ready</p>
                 </div>
               )}
-              <div className="flex gap-1">
+              <div className="flex gap-1 items-center">
+                {s.isPlaced && (
+                  s.alumniListed ? (
+                    <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-emerald-400/10 text-emerald-400 flex-shrink-0">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Alumni
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => handleListAsAlumni(s._id)}
+                      disabled={listingId === s._id}
+                      className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-white/5 text-aura-muted hover:bg-aura-purple/10 hover:text-aura-purple-light transition-colors flex-shrink-0 disabled:opacity-50"
+                      title="List as verified alumnus"
+                    >
+                      {listingId === s._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GraduationCap className="w-3.5 h-3.5" />}
+                      List as Alumni
+                    </button>
+                  )
+                )}
                 <Link href={`/tpo/students/${s._id}`} className="w-8 h-8 rounded-xl hover:bg-white/5 flex items-center justify-center text-aura-muted hover:text-aura-text transition-colors">
                   <ChevronRight className="w-4 h-4" />
                 </Link>

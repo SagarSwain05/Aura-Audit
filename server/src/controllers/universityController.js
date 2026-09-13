@@ -2,6 +2,7 @@ const University = require('../models/University');
 const Student = require('../models/Student');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const Alumni = require('../models/Alumni');
 const bcrypt = require('bcryptjs');
 const csv = require('csv-parse/sync');
 
@@ -81,7 +82,13 @@ exports.getStudents = async (req, res) => {
     Student.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(Number(limit)),
     Student.countDocuments(filter),
   ]);
-  res.json({ students, total });
+
+  const listedIds = new Set(
+    (await Alumni.find({ student: { $in: students.map((s) => s._id) } }).distinct('student')).map(String)
+  );
+  const studentsWithAlumniStatus = students.map((s) => ({ ...s.toObject(), alumniListed: listedIds.has(String(s._id)) }));
+
+  res.json({ students: studentsWithAlumniStatus, total });
 };
 
 // GET /api/university/students/:id
@@ -101,6 +108,88 @@ exports.updateStudent = async (req, res) => {
   student.calculateCareerReadinessScore();
   await student.save();
   res.json({ student });
+};
+
+// Shared by single and bulk listing below — builds the Alumni upsert payload
+// from a student's existing (real) placement record on file.
+const alumniPayloadFromStudent = (student, uni, overrides = {}) => {
+  const company = overrides.currentCompany || student.placementDetails?.companyName || '';
+  const role = overrides.currentRole || student.placementDetails?.jobRole || '';
+  const year = overrides.graduationYear
+    || (student.placementDetails?.joiningDate ? new Date(student.placementDetails.joiningDate).getFullYear() : undefined);
+  return {
+    currentCompany: company,
+    currentRole: role,
+    graduationYear: year,
+    skills: student.skills.map((s) => s.name),
+    isAvailableForMentorship: overrides.isAvailableForMentorship !== undefined ? overrides.isAvailableForMentorship : true,
+    bio: overrides.bio || `Placed as ${role || 'a professional'} at ${company || 'their organization'} — listed by ${uni.name}.`,
+    linkedinUrl: student.socialLinks?.linkedin || '',
+    verified: true,
+    verifiedBy: uni._id,
+  };
+};
+
+// POST /api/university/students/:id/list-as-alumni — TPO lists a real, placed
+// student as a verified alumnus using the placement record already on file.
+// This is how the Alumni Connect directory gets seeded with genuine people
+// instead of staying empty until students self-declare one by one.
+exports.listStudentAsAlumni = async (req, res) => {
+  const uni = await University.findOne({ tpoEmail: req.user.email });
+  if (!uni) return res.status(404).json({ message: 'University profile not found' });
+
+  const student = await Student.findOne({ _id: req.params.id, university: uni._id });
+  if (!student) return res.status(404).json({ message: 'Student not found in your university' });
+
+  const overrides = req.body;
+  if (!student.isPlaced && !overrides.currentCompany) {
+    return res.status(400).json({ message: 'This student has no placement record — provide currentCompany/currentRole to list them as alumni anyway.' });
+  }
+
+  const alumni = await Alumni.findOneAndUpdate(
+    { student: student._id },
+    { $set: alumniPayloadFromStudent(student, uni, overrides) },
+    { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+  );
+
+  res.json({ alumni });
+};
+
+// POST /api/university/students/bulk-list-as-alumni — list every currently
+// placed student (who isn't already TPO-listed) in one action, seeding the
+// directory at scale from real placement records instead of one at a time.
+exports.bulkListPlacedAsAlumni = async (req, res) => {
+  const uni = await University.findOne({ tpoEmail: req.user.email });
+  if (!uni) return res.status(404).json({ message: 'University profile not found' });
+
+  const placedStudents = await Student.find({ university: uni._id, isPlaced: true });
+  const alreadyListed = await Alumni.find({ student: { $in: placedStudents.map((s) => s._id) } }).distinct('student');
+  const alreadyListedSet = new Set(alreadyListed.map(String));
+  const toList = placedStudents.filter((s) => !alreadyListedSet.has(String(s._id)));
+
+  let listed = 0;
+  for (const student of toList) {
+    await Alumni.findOneAndUpdate(
+      { student: student._id },
+      { $set: alumniPayloadFromStudent(student, uni) },
+      { upsert: true, runValidators: true, setDefaultsOnInsert: true }
+    );
+    listed++;
+  }
+
+  res.json({ listed, alreadyListed: alreadyListedSet.size, totalPlaced: placedStudents.length });
+};
+
+// DELETE /api/university/students/:id/list-as-alumni — remove a TPO-verified listing
+exports.unlistStudentAsAlumni = async (req, res) => {
+  const uni = await University.findOne({ tpoEmail: req.user.email });
+  if (!uni) return res.status(404).json({ message: 'University profile not found' });
+
+  const student = await Student.findOne({ _id: req.params.id, university: uni._id });
+  if (!student) return res.status(404).json({ message: 'Student not found in your university' });
+
+  await Alumni.deleteOne({ student: student._id, verified: true, verifiedBy: uni._id });
+  res.json({ message: 'Removed from alumni directory' });
 };
 
 // DELETE /api/university/students/:id
