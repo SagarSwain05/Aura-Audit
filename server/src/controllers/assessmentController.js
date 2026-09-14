@@ -41,15 +41,132 @@ exports.generateAssessment = async (req, res) => {
     questions,
     status: 'in_progress',
     startedAt: new Date(),
+    fallback: Boolean(aiData.fallback),
   });
 
   res.status(201).json({ assessmentId: assessment._id, questions, total_points, fallback: Boolean(aiData.fallback) });
 };
 
+// POST /api/assessment/:id/regenerate — re-run question generation for an
+// assessment that only got the static offline fallback set (same skill/
+// level, fresh questions), in place, before the student has started
+// answering. Without this, an assessment created during a bad AI-engine
+// moment is stuck with the same generic template forever.
+exports.regenerateAssessment = async (req, res) => {
+  const student = await Student.findOne({ userId: req.user._id });
+  if (!student) return res.status(404).json({ message: 'Student not found' });
+
+  const assessment = await Assessment.findOne({ _id: req.params.id, student: student._id });
+  if (!assessment) return res.status(404).json({ message: 'Assessment not found' });
+  if (!assessment.fallback) {
+    return res.status(400).json({ message: 'This assessment already has real AI-generated questions — nothing to regenerate.' });
+  }
+  if (assessment.status !== 'in_progress' || (assessment.answers || []).length > 0) {
+    return res.status(400).json({ message: 'Cannot regenerate an assessment that already has submitted answers.' });
+  }
+
+  const userGeminiKey = req.headers['x-user-gemini-key'];
+  let aiData;
+  try {
+    const aiRes = await axios.post(`${AI}/api/v1/assessment/generate`, {
+      skill: assessment.skill, current_level: assessment.currentLevel, target_level: assessment.targetLevel,
+    }, {
+      timeout: 60000,
+      headers: userGeminiKey ? { 'x-user-gemini-key': userGeminiKey } : {},
+    });
+    aiData = aiRes.data;
+  } catch (err) {
+    return res.status(502).json({ message: 'AI engine is still unavailable — please try again shortly.' });
+  }
+
+  assessment.questions = aiData.questions;
+  assessment.fallback = Boolean(aiData.fallback);
+  await assessment.save();
+
+  res.json({ assessmentId: assessment._id, questions: assessment.questions, total_points: aiData.total_points, fallback: assessment.fallback });
+};
+
+// POST /api/assessment/:id/reevaluate — re-run grading on the already-
+// submitted answers, for an assessment whose first evaluation fell back to
+// offline partial-credit grading because the AI engine was unavailable.
+exports.reevaluateAssessment = async (req, res) => {
+  const student = await Student.findOne({ userId: req.user._id });
+  if (!student) return res.status(404).json({ message: 'Student not found' });
+
+  const assessment = await Assessment.findOne({ _id: req.params.id, student: student._id });
+  if (!assessment) return res.status(404).json({ message: 'Assessment not found' });
+  if (!assessment.evaluationFallback) {
+    return res.status(400).json({ message: 'This assessment already has a real AI evaluation — nothing to re-evaluate.' });
+  }
+
+  const answersArray = (assessment.answers || []).map((a) => ({ question_id: a.question_id, answer: a.answer || '' }));
+  let aiRes;
+  try {
+    aiRes = await axios.post(`${AI}/api/v1/assessment/evaluate`, {
+      questions: assessment.questions,
+      answers: answersArray,
+      skill: assessment.skill,
+      current_level: assessment.currentLevel,
+      target_level: assessment.targetLevel,
+    }, {
+      timeout: 60000,
+      headers: req.headers['x-user-gemini-key'] ? { 'x-user-gemini-key': req.headers['x-user-gemini-key'] } : {},
+    });
+  } catch (err) {
+    return res.status(502).json({ message: 'AI engine is still unavailable — please try again shortly.' });
+  }
+
+  const { evaluation, feedback } = aiRes.data;
+  const wasPassed = assessment.evaluationResult?.passed;
+  const evalResult = {
+    totalScore:     evaluation.totalScore     ?? evaluation.total_score     ?? 0,
+    totalPoints:    evaluation.totalPoints    ?? evaluation.total_points    ?? 100,
+    percentage:     evaluation.percentage     ?? 0,
+    passed:         evaluation.passed         ?? false,
+    passThreshold:  evaluation.passThreshold  ?? evaluation.pass_threshold  ?? 70,
+    results:        evaluation.results        ?? [],
+    correctCount:   evaluation.correctCount   ?? evaluation.correct_count   ?? 0,
+    totalQuestions: evaluation.totalQuestions ?? evaluation.total_questions ?? 0,
+  };
+  assessment.evaluationResult = evalResult;
+  assessment.feedback = feedback;
+  assessment.evaluationFallback = false;
+  await assessment.save();
+
+  // If the real grade newly crosses the pass line (the offline fallback
+  // under-credits open-ended answers), retroactively verify the skill and
+  // issue the certificate — the student shouldn't lose out just because the
+  // first grading pass happened to be the degraded one.
+  if (evalResult.passed && !wasPassed) {
+    const fullStudent = await Student.findById(assessment.student);
+    if (fullStudent && !assessment.certificateIssued) {
+      assessment.certificateIssued = true;
+      fullStudent.certifications.push({
+        name: `${assessment.skill} — ${assessment.targetLevel.charAt(0).toUpperCase() + assessment.targetLevel.slice(1)} Level`,
+        issuer: 'Aura-Audit AI Assessment',
+        issueDate: new Date(),
+      });
+      const matched = matchSkillToCatalog(assessment.skill);
+      const skillEntry = fullStudent.skills.find(s => s.name.toLowerCase() === matched.name.toLowerCase());
+      if (skillEntry) {
+        skillEntry.verified = true;
+      } else {
+        fullStudent.skills.push({ name: matched.name, level: assessment.targetLevel || 'intermediate', category: matched.category, source: 'assessment', verified: true });
+      }
+      await Promise.all([assessment.save(), fullStudent.save()]);
+    }
+  }
+
+  res.json({ assessment, evaluation: evalResult, feedback });
+};
+
 // POST /api/assessment/:id/submit
 exports.submitAssessment = async (req, res) => {
   const { answers } = req.body;
-  const assessment = await Assessment.findById(req.params.id);
+  const student = await Student.findOne({ userId: req.user._id });
+  if (!student) return res.status(404).json({ message: 'Student not found' });
+
+  const assessment = await Assessment.findOne({ _id: req.params.id, student: student._id });
   if (!assessment) return res.status(404).json({ message: 'Assessment not found' });
 
   assessment.answers = answers;
@@ -92,11 +209,12 @@ exports.submitAssessment = async (req, res) => {
   };
   assessment.evaluationResult = evalResult;
   assessment.feedback = feedback;
+  assessment.evaluationFallback = Boolean(aiRes.data.fallback);
   assessment.status = 'evaluated';
   assessment.evaluatedAt = new Date();
 
-  // Award career points
-  const student = await Student.findById(assessment.student);
+  // Award career points (`student` already fetched above via req.user, and
+  // is guaranteed to match assessment.student since the query was scoped to it)
   const points = evalResult.passed ? 50 : 20;
   student.careerPoints.total += points;
   student.careerPoints.history.push({ points, reason: `Assessment: ${assessment.skill} (${evalResult.percentage}%)` });
@@ -159,7 +277,10 @@ exports.getAssessments = async (req, res) => {
 
 // GET /api/assessment/:id
 exports.getAssessmentById = async (req, res) => {
-  const assessment = await Assessment.findById(req.params.id);
+  const student = await Student.findOne({ userId: req.user._id });
+  if (!student) return res.status(404).json({ message: 'Not found' });
+
+  const assessment = await Assessment.findOne({ _id: req.params.id, student: student._id });
   if (!assessment) return res.status(404).json({ message: 'Not found' });
   res.json({ assessment });
 };

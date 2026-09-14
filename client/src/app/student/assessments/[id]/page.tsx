@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Brain, CheckCircle, XCircle, Award, Timer, ChevronRight, ChevronLeft,
-  Loader2, AlertTriangle, Code2, MessageSquare, HelpCircle, ToggleLeft,
+  Loader2, AlertTriangle, Code2, MessageSquare, HelpCircle, ToggleLeft, RefreshCw,
 } from 'lucide-react'
 import { assessmentApi } from '@/lib/api'
 import toast from 'react-hot-toast'
@@ -40,6 +40,8 @@ interface Assessment {
   }
   certificateIssued: boolean
   createdAt: string
+  fallback?: boolean
+  evaluationFallback?: boolean
 }
 
 const TYPE_META: Record<string, { label: string; color: string; icon: React.ElementType }> = {
@@ -60,6 +62,8 @@ export default function AssessmentDetailPage() {
   const [submitting, setSubmitting] = useState(false)
   const [timeLeft, setTimeLeft] = useState(1200) // 20 min
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
+  const [reevaluating, setReevaluating] = useState(false)
   // Use ref to avoid stale closure in timer for auto-submit
   const assessmentRef = useRef<Assessment | null>(null)
   assessmentRef.current = assessment
@@ -88,6 +92,36 @@ export default function AssessmentDetailPage() {
       setSubmitting(false)
     }
   }, [assessment, answers]) // eslint-disable-line
+
+  const handleRegenerate = async () => {
+    if (!assessment) return
+    setRegenerating(true)
+    try {
+      const r = await assessmentApi.regenerate(assessment._id)
+      setAssessment((prev) => prev ? { ...prev, questions: r.data.questions, fallback: r.data.fallback } : prev)
+      toast.success('Fresh questions generated!')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } }
+      toast.error(e.response?.data?.message || 'Failed to regenerate — try again shortly')
+    } finally {
+      setRegenerating(false)
+    }
+  }
+
+  const handleReevaluate = async () => {
+    if (!assessment) return
+    setReevaluating(true)
+    try {
+      const r = await assessmentApi.reevaluate(assessment._id)
+      setAssessment(r.data.assessment)
+      toast.success('Re-evaluated with real AI grading!')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } }
+      toast.error(e.response?.data?.message || 'Failed to re-evaluate — try again shortly')
+    } finally {
+      setReevaluating(false)
+    }
+  }
 
   // Timer — starts when assessment is in_progress, uses ref for auto-submit to avoid stale closure
   useEffect(() => {
@@ -131,6 +165,24 @@ export default function AssessmentDetailPage() {
 
     return (
       <div className="p-4 sm:p-6 space-y-5 max-w-4xl mx-auto w-full">
+        {assessment.evaluationFallback && (
+          <div className="glass-card p-4 border-amber-500/30 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-sm font-semibold text-amber-400">This score used offline fallback grading</p>
+              <p className="text-xs text-aura-muted mt-0.5">
+                The AI engine was unavailable when you submitted — open-ended answers got partial credit only, not full semantic grading.
+              </p>
+            </div>
+            <button
+              onClick={handleReevaluate}
+              disabled={reevaluating}
+              className="btn-primary text-xs px-4 py-2 flex items-center gap-1.5 disabled:opacity-50 shrink-0"
+            >
+              {reevaluating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              Re-evaluate with AI
+            </button>
+          </div>
+        )}
         {/* Score card */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
           className="glass-card p-6 sm:p-8 text-center">
@@ -247,6 +299,21 @@ export default function AssessmentDetailPage() {
               {formatTime(timeLeft)}
             </div>
           </div>
+          {assessment.fallback && answeredCount === 0 && (
+            <div className="mb-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-xs text-amber-400">
+                <span className="font-semibold">Placeholder questions</span> — the AI engine was unavailable when these were generated.
+              </p>
+              <button
+                onClick={handleRegenerate}
+                disabled={regenerating}
+                className="text-xs px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 flex items-center gap-1.5 disabled:opacity-50 shrink-0"
+              >
+                {regenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                Get Real Questions
+              </button>
+            </div>
+          )}
           {/* Progress bar */}
           <div>
             <div className="flex justify-between text-xs text-aura-muted mb-1">

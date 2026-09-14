@@ -221,6 +221,35 @@ exports.getAudit = async (req, res) => {
   res.json({ audit });
 };
 
+// POST /api/audit/:id/retry — re-run real AI analysis on an audit that only
+// has degraded fallback content (the AI engine was unavailable/rate-limited
+// at the time it was first created). Audits are otherwise generated once and
+// stored permanently, so without this a bad moment for the AI engine leaves
+// that specific audit stuck showing placeholder content forever, even after
+// the engine recovers — the user's only option was re-uploading from
+// scratch. This reuses the same resume file already on Cloudinary.
+exports.retryAudit = async (req, res) => {
+  const audit = await Audit.findOne({ _id: req.params.id, user: req.user._id });
+  if (!audit) return res.status(404).json({ message: 'Audit not found' });
+
+  const isFallback = audit.resumeMeta?.fallback === true || audit.status === 'failed';
+  if (!isFallback) {
+    return res.status(400).json({ message: 'This audit already has full AI results — nothing to retry.' });
+  }
+
+  await Audit.findByIdAndUpdate(audit._id, { status: 'processing', errorMessage: null });
+  res.status(202).json({ message: 'Retrying analysis' });
+
+  const userGeminiKey = req.headers['x-user-gemini-key'] || null;
+  processAuditAsync(audit, { path: audit.resumeUrl }, audit.dreamRole, userGeminiKey).catch(async (err) => {
+    console.error('Audit retry failed:', getAxiosErrorMessage(err));
+    await Audit.findByIdAndUpdate(audit._id, buildFallbackAuditResult(getAxiosErrorMessage(err)));
+    if (global.emitAuditUpdate) {
+      global.emitAuditUpdate(audit._id.toString(), { status: 'completed', fallback: true, error: getAxiosErrorMessage(err) });
+    }
+  });
+};
+
 // Must stay comfortably above the /analyze axios timeout (180s) used in
 // processAuditAsync, so this only fires for audits truly abandoned by a
 // server restart — not ones still legitimately in flight.

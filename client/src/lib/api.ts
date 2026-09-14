@@ -52,6 +52,7 @@ export const auditApi = {
     api.post('/api/audit', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   getAll: () => api.get('/api/audit'),
   getById: (id: string) => api.get(`/api/audit/${id}`),
+  retry: (id: string) => api.post(`/api/audit/${id}/retry`),
   getStatus: (id: string) => api.get(`/api/audit/${id}/status`),
   delete: (id: string) => api.delete(`/api/audit/${id}`),
   generateRoadmap: (data: { skills: string[]; dreamRole: string; days?: number }) =>
@@ -116,7 +117,9 @@ export const alumniApi = {
 // ── Assessment ─────────────────────────────────────────
 export const assessmentApi = {
   generate: (data: { skill: string; level?: string }) => api.post('/api/assessment/generate', data),
+  regenerate: (id: string) => api.post(`/api/assessment/${id}/regenerate`),
   submit: (id: string, answers: Record<string, string>) => api.post(`/api/assessment/${id}/submit`, { answers }),
+  reevaluate: (id: string) => api.post(`/api/assessment/${id}/reevaluate`),
   getAll: () => api.get('/api/assessment'),
   getById: (id: string) => api.get(`/api/assessment/${id}`),
 }

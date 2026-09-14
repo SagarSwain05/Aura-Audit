@@ -89,10 +89,11 @@ export interface Audit {
   }
   interviewQuestions: InterviewQuestion[]
   resumeMeta: {
-    pages: number
-    word_count: number
-    metrics_count: { percentages: number; numbers: number; total_metrics: number }
-    weak_verbs_count: number
+    pages?: number
+    word_count?: number
+    metrics_count?: { percentages: number; numbers: number; total_metrics: number }
+    weak_verbs_count?: number
+    fallback?: boolean
   }
   status: 'processing' | 'completed' | 'failed'
   blindMode: boolean

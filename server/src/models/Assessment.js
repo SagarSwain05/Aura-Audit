@@ -36,6 +36,12 @@ const assessmentSchema = new mongoose.Schema({
 
   status: { type: String, enum: ['upcoming', 'in_progress', 'completed', 'evaluated'], default: 'upcoming' },
   certificateIssued: { type: Boolean, default: false },
+  // True when the AI engine was unavailable at generation/evaluation time and
+  // a static offline fallback was used instead — lets the frontend offer a
+  // real regenerate/re-evaluate action instead of leaving the user stuck
+  // with generic placeholder content forever.
+  fallback: { type: Boolean, default: false },
+  evaluationFallback: { type: Boolean, default: false },
   startedAt: Date,
   submittedAt: Date,
   evaluatedAt: Date,

@@ -34,6 +34,7 @@ export default function AuditPage() {
   const [audit, setAudit] = useState<Audit | null>(currentAudit)
   const [loading, setLoading] = useState(!currentAudit)
   const [roadmapLoading, setRoadmapLoading] = useState(false)
+  const [retrying, setRetrying] = useState(false)
 
   useEffect(() => {
     if (currentAudit?._id === id) {
@@ -84,6 +85,23 @@ export default function AuditPage() {
 
   const isProcessing = audit.status === 'processing'
   const isFailed = audit.status === 'failed'
+  const isFallback = audit.status === 'completed' && audit.resumeMeta?.fallback === true
+
+  const handleRetry = async () => {
+    setRetrying(true)
+    try {
+      await auditApi.retry(id)
+      const updated = { ...audit, status: 'processing' as const }
+      setAudit(updated)
+      setCurrentAudit(updated)
+      toast.success('Retrying analysis — this can take 30–60s')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } }
+      toast.error(e.response?.data?.message || 'Failed to retry')
+    } finally {
+      setRetrying(false)
+    }
+  }
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'rgb(var(--c-bg))' }}>
@@ -150,6 +168,26 @@ export default function AuditPage() {
           <div className="glass-card p-8 text-center mb-6 border-red-500/20">
             <p className="text-red-400 mb-2">Analysis failed: {(audit as unknown as Record<string, string>).errorMessage}</p>
             <Link href="/upload" className="btn-primary text-sm">Try Again</Link>
+          </div>
+        )}
+
+        {/* Fallback state — the AI engine was unavailable when this audit first ran.
+            The result below is a placeholder, not real analysis; retry re-runs it
+            on the same resume without re-uploading. */}
+        {isFallback && (
+          <div className="glass-card p-6 text-center mb-6 border-amber-500/30">
+            <p className="font-semibold text-amber-400 mb-1">This audit only has placeholder results</p>
+            <p className="text-aura-muted text-sm mb-4">
+              The AI engine was temporarily unavailable when this resume was first analyzed. Retry to get real redlines, skills, and market data on the same file.
+            </p>
+            <button
+              onClick={handleRetry}
+              disabled={retrying}
+              className="btn-primary text-sm px-6 py-2.5 flex items-center gap-2 mx-auto disabled:opacity-50"
+            >
+              {retrying ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              Retry Analysis
+            </button>
           </div>
         )}
 

@@ -4,6 +4,7 @@ const { upload } = require('../middleware/upload');
 const {
   createAudit,
   getAudit,
+  retryAudit,
   getAuditStatus,
   getMyAudits,
   deleteAudit,
@@ -17,6 +18,7 @@ const {
 router.post('/', protect, upload.single('resume'), createAudit);
 router.get('/', protect, getMyAudits);
 router.get('/:id', protect, getAudit);
+router.post('/:id/retry', protect, retryAudit);
 router.get('/:id/status', protect, getAuditStatus);
 router.delete('/:id', protect, deleteAudit);
 router.post('/roadmap', protect, generateRoadmap);

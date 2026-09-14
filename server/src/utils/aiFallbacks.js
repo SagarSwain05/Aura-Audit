@@ -233,7 +233,21 @@ const makeFallbackEvaluation = (questions = [], answersArray = []) => {
 
     totalScore += earned;
     if (isCorrect) correctCount += 1;
-    return { question_id: q.id, answer: studentAnswer, is_correct: isCorrect, points_earned: earned, points_possible: points, feedback };
+    // Field names must match the AI engine's real evaluation response
+    // (ai-engine/agents/evaluation_agent.py: questionId/isCorrect/score/
+    // correctAnswer, camelCase) — the frontend's per-question breakdown
+    // reads these exact keys. A snake_case mismatch here previously made
+    // every question silently render as incorrect with 0 points whenever
+    // this fallback fired, regardless of the actual grading above.
+    return {
+      questionId: q.id,
+      answer: studentAnswer,
+      isCorrect,
+      score: earned,
+      pointsPossible: points,
+      feedback,
+      correctAnswer: q.correct_answer ?? q.model_answer ?? '',
+    };
   });
 
   const percentage = totalPoints > 0 ? Math.round((totalScore / totalPoints) * 100) : 0;
