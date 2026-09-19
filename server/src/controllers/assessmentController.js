@@ -23,7 +23,7 @@ exports.generateAssessment = async (req, res) => {
     const aiRes = await axios.post(`${AI}/api/v1/assessment/generate`, {
       skill, current_level: currentLevel || 'beginner', target_level: targetLevel || 'intermediate',
     }, {
-      timeout: 60000,
+      timeout: 150000,
       headers: userGeminiKey ? { 'x-user-gemini-key': userGeminiKey } : {},
     });
     aiData = aiRes.data;
@@ -71,7 +71,7 @@ exports.regenerateAssessment = async (req, res) => {
     const aiRes = await axios.post(`${AI}/api/v1/assessment/generate`, {
       skill: assessment.skill, current_level: assessment.currentLevel, target_level: assessment.targetLevel,
     }, {
-      timeout: 60000,
+      timeout: 150000,
       headers: userGeminiKey ? { 'x-user-gemini-key': userGeminiKey } : {},
     });
     aiData = aiRes.data;
@@ -109,7 +109,7 @@ exports.reevaluateAssessment = async (req, res) => {
       current_level: assessment.currentLevel,
       target_level: assessment.targetLevel,
     }, {
-      timeout: 60000,
+      timeout: 150000,
       headers: req.headers['x-user-gemini-key'] ? { 'x-user-gemini-key': req.headers['x-user-gemini-key'] } : {},
     });
   } catch (err) {
@@ -188,7 +188,7 @@ exports.submitAssessment = async (req, res) => {
     current_level: assessment.currentLevel,
     target_level: assessment.targetLevel,
   }, {
-    timeout: 60000,
+    timeout: 150000,
     headers: req.headers['x-user-gemini-key'] ? { 'x-user-gemini-key': req.headers['x-user-gemini-key'] } : {},
   }).catch((err) => {
     console.warn('Assessment evaluation AI unavailable, using fallback grading:', err.message);

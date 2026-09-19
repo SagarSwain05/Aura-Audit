@@ -224,7 +224,7 @@ exports.getLiveJobs = async (req, res) => {
       experience_titles: experienceTitles,
       num_jobs: Math.min(Number(num_jobs), 20),
       score_matches: true,
-    }, { timeout: 90000, headers: aiHeaders }); // longer timeout — LLM scoring takes time
+    }, { timeout: 150000, headers: aiHeaders }); // longer timeout — LLM scoring across multiple jobs takes time
 
     return res.json(aiRes.data);
   } catch (err) {

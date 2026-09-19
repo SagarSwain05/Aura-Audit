@@ -42,7 +42,7 @@ exports.getCareerRoadmap = async (req, res) => {
         'Content-Type': 'application/x-www-form-urlencoded',
         ...(req.headers['x-user-gemini-key'] ? { 'x-user-gemini-key': req.headers['x-user-gemini-key'] } : {}),
       },
-      timeout: 60000,
+      timeout: 150000,
     });
     return res.json(aiRes.data);
   } catch (e) {

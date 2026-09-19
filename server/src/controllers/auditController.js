@@ -309,7 +309,7 @@ exports.generateRoadmap = async (req, res) => {
       'Content-Type': 'application/x-www-form-urlencoded',
       ...(userGeminiKey ? { 'x-user-gemini-key': userGeminiKey } : {}),
     },
-    timeout: 90000,
+    timeout: 150000,
   }).catch((err) => {
     console.warn('Roadmap AI unavailable, using fallback:', getAxiosErrorMessage(err));
     return { data: makeFallbackRoadmap(dreamRole || skillStr, skills || skillStr, days) };
@@ -333,7 +333,7 @@ exports.generateInterview = async (req, res) => {
       'Content-Type': 'application/x-www-form-urlencoded',
       ...(req.headers['x-user-gemini-key'] ? { 'x-user-gemini-key': req.headers['x-user-gemini-key'] } : {}),
     },
-    timeout: 60000,
+    timeout: 150000,
   }).catch((err) => {
     console.warn('Interview AI unavailable, using fallback:', getAxiosErrorMessage(err));
     return { data: makeFallbackInterview(role || audit.dreamRole) };
