@@ -82,6 +82,14 @@ export const studentApi = {
   removeCertification: (certId: string) => api.delete(`/api/student/certifications/${certId}`),
   addProject: (project: Record<string, unknown>) => api.post('/api/student/projects', project),
   removeProject: (projectId: string) => api.delete(`/api/student/projects/${projectId}`),
+  setUniversity: (data: { universityId?: string; universityName?: string }) => api.put('/api/student/university', data),
+  getNotices: () => api.get('/api/student/notices'),
+}
+
+// ── University catalog (public) ─────────────────────────
+export const universityCatalogApi = {
+  search: (params?: { search?: string; state?: string; type?: string }) => api.get('/api/universities/catalog', { params }),
+  getStates: () => api.get('/api/universities/states'),
 }
 
 // ── Jobs ───────────────────────────────────────────────
@@ -162,6 +170,10 @@ export const universityApi = {
     api.post(`/api/university/students/${id}/list-as-alumni`, data || {}),
   unlistStudentAsAlumni: (id: string) => api.delete(`/api/university/students/${id}/list-as-alumni`),
   bulkListPlacedAsAlumni: () => api.post('/api/university/students/bulk-list-as-alumni'),
+  createNotice: (data: Record<string, unknown>) => api.post('/api/university/notices', data),
+  getNotices: () => api.get('/api/university/notices'),
+  updateNotice: (id: string, data: Record<string, unknown>) => api.put(`/api/university/notices/${id}`, data),
+  deleteNotice: (id: string) => api.delete(`/api/university/notices/${id}`),
 }
 
 // ── Notifications ──────────────────────────────────────

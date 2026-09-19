@@ -9,7 +9,7 @@ import {
   Home, FileSearch, Briefcase, Brain, TrendingUp, BarChart2, Trophy, Users,
   FileText, UserCircle, Building2, ClipboardList, PieChart, AlertTriangle,
   Upload, MapPin, CheckCircle, GraduationCap, UserCheck, Globe,
-  Sun, Moon,
+  Sun, Moon, School, Megaphone,
 } from 'lucide-react'
 import { useAuditStore } from '@/store/useAuditStore'
 import { notificationsApi } from '@/lib/api'
@@ -27,6 +27,8 @@ const STUDENT_NAV: NavItem[] = [
   { href: '/student/analytics',    label: 'Analytics',      icon: BarChart2 },
   { href: '/student/leaderboard',  label: 'Leaderboard',    icon: Trophy },
   { href: '/student/alumni',       label: 'Alumni Connect', icon: Users },
+  { href: '/student/college',      label: 'College/University', icon: School },
+  { href: '/student/notices',      label: 'Placement Notices', icon: Megaphone },
   { href: '/student/resume-builder', label: 'Resume Builder', icon: FileText },
   { href: '/student/profile',      label: 'Profile',        icon: UserCircle },
   { href: '/student/notifications', label: 'Notifications', icon: Bell },
@@ -54,6 +56,7 @@ const TPO_NAV: NavItem[] = [
   { href: '/tpo/upload',       label: 'Batch Upload',    icon: Upload },
   { href: '/tpo/placements',   label: 'Placements',      icon: MapPin },
   { href: '/tpo/companies',    label: 'Company Approval',icon: Building2 },
+  { href: '/tpo/notices',      label: 'Notice Board',    icon: Megaphone },
   { href: '/tpo/profile',      label: 'Profile',         icon: GraduationCap },
   { href: '/tpo/settings',     label: 'Settings',        icon: Settings },
 ]

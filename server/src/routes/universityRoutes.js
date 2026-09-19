@@ -21,5 +21,9 @@ router.get('/employability', c.getEmployabilityMetrics);
 router.get('/intervention', c.getAtRiskStudents);
 router.get('/companies/pending', c.getPendingCompanies);
 router.put('/companies/:id/verify', c.verifyCompany);
+router.post('/notices', c.createNotice);
+router.get('/notices', c.getMyNotices);
+router.put('/notices/:id', c.updateNotice);
+router.delete('/notices/:id', c.deleteNotice);
 
 module.exports = router;

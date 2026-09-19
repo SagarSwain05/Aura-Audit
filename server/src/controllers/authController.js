@@ -5,6 +5,7 @@ const Student = require('../models/Student');
 const Company = require('../models/Company');
 const University = require('../models/University');
 const { sendOTPEmail, sendResetPasswordEmail } = require('../services/emailService');
+const { normalize } = require('../utils/universityMatcher');
 
 const signToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -15,7 +16,7 @@ const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString()
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email?.trim());
 
 exports.register = async (req, res) => {
-  const { name, email, password, role, dreamRole, universityName, companyName } = req.body;
+  const { name, email, password, role, dreamRole, universityName, universityId, companyName } = req.body;
 
   if (!isValidEmail(email)) {
     return res.status(400).json({ message: 'Please enter a valid email address (e.g. you@example.com)' });
@@ -57,7 +58,29 @@ exports.register = async (req, res) => {
   } else if (role === 'company') {
     await Company.create({ userId: user._id, name: companyName || name, email });
   } else if (role === 'tpo') {
-    await University.create({ userId: user._id, name: universityName || name, email, tpoContact: name, tpoEmail: email });
+    // Claim an existing catalog entry rather than creating a duplicate,
+    // whenever we can be confident it's the same institution: an explicit
+    // pick from the catalog (universityId) is highest confidence; failing
+    // that, an exact normalized name match on an unclaimed entry.
+    let uni = null;
+    if (universityId) {
+      uni = await University.findOne({ _id: universityId, userId: null });
+    }
+    if (!uni && universityName) {
+      const target = normalize(universityName);
+      const unclaimed = await University.find({ userId: null });
+      uni = unclaimed.find((c) => normalize(c.name) === target) || null;
+    }
+
+    if (uni) {
+      uni.userId = user._id;
+      uni.email = email;
+      uni.tpoContact = name;
+      uni.tpoEmail = email;
+      await uni.save();
+    } else {
+      await University.create({ userId: user._id, name: universityName || name, email, tpoContact: name, tpoEmail: email });
+    }
   }
 
   // Send OTP email — roll back user+profile if it fails
@@ -68,7 +91,20 @@ exports.register = async (req, res) => {
     await User.findByIdAndDelete(user._id);
     if (role === 'student') await Student.deleteOne({ userId: user._id });
     else if (role === 'company') await Company.deleteOne({ userId: user._id });
-    else if (role === 'tpo') await University.deleteOne({ userId: user._id });
+    else if (role === 'tpo') {
+      // A pre-seeded catalog entry that got claimed should be released back
+      // to unclaimed, not deleted — deleting it would wipe a real
+      // institution out of the catalog just because this signup's OTP
+      // email happened to fail to send.
+      const uniDoc = await University.findOne({ userId: user._id });
+      if (uniDoc && uniDoc.createdAt && uniDoc.createdAt.getTime() === uniDoc.updatedAt.getTime()) {
+        // Created fresh in this same request (no prior catalog history) — safe to remove entirely.
+        await University.deleteOne({ userId: user._id });
+      } else if (uniDoc) {
+        uniDoc.userId = undefined;
+        await uniDoc.save();
+      }
+    }
 
     if (emailErr.message === 'EMAIL_NOT_CONFIGURED' || emailErr.message === 'EMAIL_FROM_NOT_CONFIGURED') {
       return res.status(503).json({

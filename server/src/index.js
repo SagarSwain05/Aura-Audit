@@ -21,6 +21,7 @@ const companyRoutes = require('./routes/company');
 const universityRoutes = require('./routes/universityRoutes');
 const notificationRoutes = require('./routes/notifications');
 const alumniRoutes = require('./routes/alumni');
+const universitiesRoutes = require('./routes/universities');
 const { getEmailProviderStatus } = require('./services/emailService');
 
 const app = express();
@@ -77,6 +78,7 @@ app.use('/api/company', companyRoutes);
 app.use('/api/university', universityRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/alumni', alumniRoutes);
+app.use('/api/universities', universitiesRoutes);
 
 // POST /api/wake-ai — fire-and-forget nudge to the AI engine. Public (no
 // auth) and deliberately non-blocking: the frontend calls this as early as

@@ -3,6 +3,7 @@ const Student = require('../models/Student');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const Alumni = require('../models/Alumni');
+const Notice = require('../models/Notice');
 const bcrypt = require('bcryptjs');
 const csv = require('csv-parse/sync');
 
@@ -308,4 +309,78 @@ exports.verifyCompany = async (req, res) => {
   company.isVerified = action === 'approve';
   await company.save();
   res.json({ company });
+};
+
+// ── Placement Notice Board ──────────────────────────────────────────────
+
+// POST /api/university/notices
+exports.createNotice = async (req, res) => {
+  const uni = await University.findOne({ tpoEmail: req.user.email });
+  if (!uni) return res.status(404).json({ message: 'University profile not found' });
+
+  const { title, message, type, company, eventDate, link, pinned } = req.body;
+  if (!title || !message) return res.status(400).json({ message: 'title and message are required' });
+
+  const notice = await Notice.create({
+    university: uni._id,
+    postedBy: req.user._id,
+    title, message,
+    type: type || 'general',
+    company: company || '',
+    eventDate: eventDate || undefined,
+    link: link || '',
+    pinned: !!pinned,
+  });
+
+  // Notify every student affiliated with this university
+  const students = await Student.find({ university: uni._id }).select('userId');
+  if (students.length) {
+    const notifs = students.map((s) => ({
+      user: s.userId,
+      type: 'system',
+      title: `New notice: ${title}`,
+      message: message.slice(0, 140),
+      link: '/student/notices',
+    }));
+    const created = await Notification.insertMany(notifs);
+    if (global.emitToUser) {
+      created.forEach((n) => global.emitToUser(n.user.toString(), 'notification', n));
+    }
+  }
+
+  res.status(201).json({ notice });
+};
+
+// GET /api/university/notices — TPO's own notices, for management
+exports.getMyNotices = async (req, res) => {
+  const uni = await University.findOne({ tpoEmail: req.user.email });
+  if (!uni) return res.status(404).json({ message: 'University profile not found' });
+  const notices = await Notice.find({ university: uni._id }).sort({ pinned: -1, createdAt: -1 });
+  res.json({ notices });
+};
+
+// PUT /api/university/notices/:id
+exports.updateNotice = async (req, res) => {
+  const uni = await University.findOne({ tpoEmail: req.user.email });
+  if (!uni) return res.status(404).json({ message: 'University profile not found' });
+
+  const allowed = ['title', 'message', 'type', 'company', 'eventDate', 'link', 'pinned'];
+  const updates = {};
+  allowed.forEach((f) => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
+
+  const notice = await Notice.findOneAndUpdate(
+    { _id: req.params.id, university: uni._id }, updates, { new: true }
+  );
+  if (!notice) return res.status(404).json({ message: 'Notice not found' });
+  res.json({ notice });
+};
+
+// DELETE /api/university/notices/:id
+exports.deleteNotice = async (req, res) => {
+  const uni = await University.findOne({ tpoEmail: req.user.email });
+  if (!uni) return res.status(404).json({ message: 'University profile not found' });
+
+  const notice = await Notice.findOneAndDelete({ _id: req.params.id, university: uni._id });
+  if (!notice) return res.status(404).json({ message: 'Notice not found' });
+  res.json({ message: 'Deleted' });
 };

@@ -1,7 +1,10 @@
 const Student = require('../models/Student');
 const User = require('../models/User');
+const University = require('../models/University');
+const Notice = require('../models/Notice');
 const Notification = require('../models/Notification');
 const { matchSkillToCatalog, CATALOG } = require('../utils/skillCategorizer');
+const { normalize } = require('../utils/universityMatcher');
 
 // GET /api/student/skills/catalog
 exports.getSkillCatalog = async (req, res) => {
@@ -11,9 +14,70 @@ exports.getSkillCatalog = async (req, res) => {
 // GET /api/student/profile
 exports.getProfile = async (req, res) => {
   const student = await Student.findOne({ userId: req.user._id })
-    .populate('university', 'name location');
+    .populate({
+      path: 'university',
+      select: 'name state type location parentUniversity userId',
+      populate: { path: 'parentUniversity', select: 'name' },
+    });
   if (!student) return res.status(404).json({ message: 'Student profile not found' });
   res.json({ student: student.toPublicJSON() });
+};
+
+// PUT /api/student/university — self-service affiliation. Accepts either an
+// existing catalog entry's id, or free-text name (matched against the
+// catalog if possible, otherwise a new unclaimed entry is created so this
+// student isn't blocked on their institution being pre-seeded).
+exports.setUniversity = async (req, res) => {
+  const { universityId, universityName } = req.body;
+  const student = await Student.findOne({ userId: req.user._id });
+  if (!student) return res.status(404).json({ message: 'Student profile not found' });
+
+  let uni;
+  if (universityId) {
+    uni = await University.findById(universityId);
+    if (!uni) return res.status(404).json({ message: 'University not found' });
+  } else if (universityName && universityName.trim()) {
+    const target = normalize(universityName);
+    const candidates = await University.find({});
+    uni = candidates.find((c) => normalize(c.name) === target);
+    if (!uni) {
+      uni = await University.create({ name: universityName.trim(), type: 'college' });
+    }
+  } else {
+    return res.status(400).json({ message: 'universityId or universityName is required' });
+  }
+
+  const previousUniversityId = student.university;
+  student.university = uni._id;
+  await student.save();
+  await User.findByIdAndUpdate(req.user._id, { university: uni._id });
+
+  if (previousUniversityId && String(previousUniversityId) !== String(uni._id)) {
+    await University.findByIdAndUpdate(previousUniversityId, { $inc: { totalStudents: -1 } });
+  }
+  if (!previousUniversityId || String(previousUniversityId) !== String(uni._id)) {
+    await University.findByIdAndUpdate(uni._id, { $inc: { totalStudents: 1 } });
+  }
+
+  const populated = await Student.findById(student._id).populate({
+    path: 'university',
+    select: 'name state type location parentUniversity userId',
+    populate: { path: 'parentUniversity', select: 'name' },
+  });
+  res.json({ student: populated.toPublicJSON() });
+};
+
+// GET /api/student/notices — placement notices from the student's own
+// affiliated university only (never cross-university).
+exports.getNotices = async (req, res) => {
+  const student = await Student.findOne({ userId: req.user._id });
+  if (!student) return res.status(404).json({ message: 'Student profile not found' });
+  if (!student.university) return res.json({ notices: [] });
+
+  const notices = await Notice.find({ university: student.university })
+    .sort({ pinned: -1, createdAt: -1 })
+    .limit(100);
+  res.json({ notices });
 };
 
 // PUT /api/student/profile
