@@ -409,16 +409,26 @@ exports.getEmployabilityMetrics = async (req, res) => {
   });
 };
 
-// GET /api/university/intervention  — at-risk students
+// GET /api/university/intervention — at-risk students by default; every
+// student affiliated with the university when ?all=true, each tagged with
+// a risk tier (a 4th "on-track" tier applies once score >= 40) and a
+// growth figure, so the TPO can monitor the whole cohort's trajectory, not
+// only whoever is currently flagged.
 exports.getAtRiskStudents = async (req, res) => {
   const uni = await University.findOne({ tpoEmail: req.user.email });
-  const atRisk = await Student.find({ university: uni._id, careerReadinessScore: { $lt: 40 }, isPlaced: false })
-    .select('name email department careerReadinessScore skills cgpa year certifications dreamRole interventions')
+  const filter = { university: uni._id };
+  if (req.query.all !== 'true') {
+    filter.careerReadinessScore = { $lt: 40 };
+    filter.isPlaced = false;
+  }
+
+  const cohort = await Student.find(filter)
+    .select('name email department careerReadinessScore skills cgpa year certifications dreamRole interventions scoreHistory isPlaced')
     .sort({ careerReadinessScore: 1 });
 
-  const categorized = atRisk.map(s => ({
+  const categorized = cohort.map(s => ({
     ...s.toObject(),
-    riskLevel: s.careerReadinessScore < 20 ? 'critical' : s.careerReadinessScore < 30 ? 'high' : 'medium',
+    riskLevel: s.careerReadinessScore < 20 ? 'critical' : s.careerReadinessScore < 30 ? 'high' : s.careerReadinessScore < 40 ? 'medium' : 'on-track',
     riskFactors: [
       s.skills.length < 3 ? 'Fewer than 3 skills listed' : null,
       s.cgpa < 6 ? 'Low CGPA' : null,
@@ -426,6 +436,7 @@ exports.getAtRiskStudents = async (req, res) => {
       !s.dreamRole ? 'No target role set' : null,
     ].filter(Boolean),
     lastSuggestion: s.interventions?.length ? s.interventions[s.interventions.length - 1] : null,
+    growth: s.getGrowth(30),
   }));
 
   res.json({ atRiskStudents: categorized, total: categorized.length });

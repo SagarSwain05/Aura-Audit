@@ -127,6 +127,15 @@ const studentSchema = new mongoose.Schema({
     }],
     status: { type: String, enum: ['suggested', 'in_progress', 'completed'], default: 'suggested' },
   }],
+
+  // Growth tracking — a snapshot every time the score actually changes, so
+  // the TPO (and the student) can see trend over time, not just a single
+  // static number. Deliberately NOT one entry per recalculation — most
+  // calls to calculateCareerReadinessScore() don't change the outcome.
+  scoreHistory: [{
+    score: Number,
+    date: { type: Date, default: Date.now },
+  }],
 }, { timestamps: true });
 
 // ── Methods ───────────────────────────────────────────────
@@ -136,8 +145,25 @@ studentSchema.methods.calculateCareerReadinessScore = function () {
   score += Math.min(this.skills.length / 8, 1) * 50;                      // Skills: 50%
   score += Math.min(this.certifications.length / 2, 1) * 20;              // Certs: 20%
   const s = Math.round(Math.min(score, 100));
+
+  if (s !== this.careerReadinessScore) {
+    if (!this.scoreHistory) this.scoreHistory = [];
+    this.scoreHistory.push({ score: s, date: new Date() });
+    // Keep the log bounded — recent trend matters more than full history depth.
+    if (this.scoreHistory.length > 50) this.scoreHistory = this.scoreHistory.slice(-50);
+  }
   this.careerReadinessScore = s;
   return s;
+};
+
+// Growth = change vs the earliest score recorded in the last `days` days
+// (falls back to the very first recorded score if the student has no
+// history that old yet). Returns null if there's nothing to compare against.
+studentSchema.methods.getGrowth = function (days = 30) {
+  if (!this.scoreHistory || this.scoreHistory.length < 2) return null;
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const baseline = this.scoreHistory.find((h) => new Date(h.date).getTime() >= cutoff) || this.scoreHistory[0];
+  return this.careerReadinessScore - baseline.score;
 };
 
 studentSchema.methods.addCareerPoints = async function (points, reason) {

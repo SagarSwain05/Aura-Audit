@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AlertTriangle, TrendingUp, Users, Brain, ChevronRight, Loader2, X, Sparkles, CheckCircle2 } from 'lucide-react'
+import { AlertTriangle, TrendingUp, TrendingDown, Minus, Users, Brain, ChevronRight, Loader2, X, Sparkles, CheckCircle2 } from 'lucide-react'
 import { universityApi } from '@/lib/api'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
@@ -26,22 +26,32 @@ interface AtRiskStudent {
   year?: number
   cgpa?: number
   careerReadinessScore: number
-  riskLevel: 'critical' | 'high' | 'medium'
+  riskLevel: 'critical' | 'high' | 'medium' | 'on-track'
   riskFactors: string[]
   skills: { name: string }[]
   lastSuggestion?: LastSuggestion | null
+  growth?: number | null
 }
 
 const RISK_COLORS = {
   critical: { text: 'text-red-400', bg: 'bg-red-400/10', border: 'border-red-400/30' },
   high: { text: 'text-orange-400', bg: 'bg-orange-400/10', border: 'border-orange-400/30' },
   medium: { text: 'text-yellow-400', bg: 'bg-yellow-400/10', border: 'border-yellow-400/30' },
+  'on-track': { text: 'text-emerald-400', bg: 'bg-emerald-400/10', border: 'border-emerald-400/30' },
 }
 
 const RISK_ICONS = {
   critical: <AlertTriangle className="w-4 h-4 text-red-400" />,
   high: <AlertTriangle className="w-4 h-4 text-orange-400" />,
   medium: <AlertTriangle className="w-4 h-4 text-yellow-400" />,
+  'on-track': <CheckCircle2 className="w-4 h-4 text-emerald-400" />,
+}
+
+function GrowthBadge({ growth }: { growth?: number | null }) {
+  if (growth === null || growth === undefined) return null
+  if (growth === 0) return <span className="text-xs text-aura-muted flex items-center gap-0.5"><Minus className="w-3 h-3" /> No change (30d)</span>
+  if (growth > 0) return <span className="text-xs text-emerald-400 flex items-center gap-0.5"><TrendingUp className="w-3 h-3" /> +{growth} (30d)</span>
+  return <span className="text-xs text-red-400 flex items-center gap-0.5"><TrendingDown className="w-3 h-3" /> {growth} (30d)</span>
 }
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -54,22 +64,24 @@ const CATEGORY_LABEL: Record<string, string> = {
 export default function InterventionPage() {
   const [students, setStudents] = useState<AtRiskStudent[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<'all' | 'critical' | 'high' | 'medium'>('all')
+  const [filter, setFilter] = useState<'all' | 'critical' | 'high' | 'medium' | 'on-track'>('all')
+  const [showFullCohort, setShowFullCohort] = useState(false)
   const [suggestingId, setSuggestingId] = useState<string | null>(null)
   const [planModal, setPlanModal] = useState<{ student: AtRiskStudent; summary: string; actions: InterventionAction[] } | null>(null)
 
-  const load = () => {
+  const load = (all: boolean) => {
     setLoading(true)
-    universityApi.getAtRiskStudents().then((r) => {
+    universityApi.getAtRiskStudents(all).then((r) => {
       setStudents(r.data.students || r.data.atRiskStudents || [])
     }).catch(() => {}).finally(() => setLoading(false))
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(showFullCohort) }, [showFullCohort])
 
   const counts = {
     critical: students.filter((s) => s.riskLevel === 'critical').length,
     high: students.filter((s) => s.riskLevel === 'high').length,
     medium: students.filter((s) => s.riskLevel === 'medium').length,
+    onTrack: students.filter((s) => s.riskLevel === 'on-track').length,
   }
 
   const filtered = filter === 'all' ? students : students.filter((s) => s.riskLevel === filter)
@@ -81,7 +93,7 @@ export default function InterventionPage() {
       const { summary, actions } = r.data.intervention
       setPlanModal({ student, summary, actions })
       toast.success(`Action plan sent to ${student.name}`)
-      load()
+      load(showFullCohort)
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } }
       toast.error(e.response?.data?.message || 'AI engine unavailable — try again shortly')
@@ -93,16 +105,29 @@ export default function InterventionPage() {
   return (
     <div className="p-6 space-y-6 max-w-5xl">
       <div>
-        <h1 className="text-2xl font-bold">Intervention Planner</h1>
-        <p className="text-aura-muted text-sm mt-1">Students requiring immediate career support (score &lt; 40)</p>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">Intervention Planner</h1>
+            <p className="text-aura-muted text-sm mt-1">
+              {showFullCohort ? 'Every student in your university, with risk tier and 30-day growth' : 'Students requiring immediate career support (score < 40)'}
+            </p>
+          </div>
+          <button
+            onClick={() => { setFilter('all'); setShowFullCohort(!showFullCohort) }}
+            className={`text-xs px-4 py-2 rounded-xl border transition-all ${showFullCohort ? 'border-aura-purple bg-aura-purple/10 text-aura-purple-light' : 'border-white/10 text-aura-muted hover:border-white/20'}`}
+          >
+            {showFullCohort ? 'Showing: All Students' : 'Show All Students'}
+          </button>
+        </div>
       </div>
 
       {/* Risk summary */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className={`grid gap-4 ${showFullCohort ? 'grid-cols-4' : 'grid-cols-3'}`}>
         {[
           { level: 'critical' as const, label: 'Critical', icon: AlertTriangle, count: counts.critical },
           { level: 'high' as const, label: 'High Risk', icon: TrendingUp, count: counts.high },
           { level: 'medium' as const, label: 'Medium Risk', icon: Users, count: counts.medium },
+          ...(showFullCohort ? [{ level: 'on-track' as const, label: 'On Track', icon: CheckCircle2, count: counts.onTrack }] : []),
         ].map((r) => (
           <motion.button
             key={r.level}
@@ -123,7 +148,11 @@ export default function InterventionPage() {
       ) : filtered.length === 0 ? (
         <div className="glass-card p-12 text-center">
           <Users className="w-12 h-12 mx-auto mb-3 opacity-40" />
-          <p className="text-aura-muted">{filter === 'all' ? 'No at-risk students detected — great job!' : `No ${filter} risk students`}</p>
+          <p className="text-aura-muted">
+            {filter !== 'all' ? `No ${filter === 'on-track' ? 'on-track' : filter + ' risk'} students`
+              : showFullCohort ? 'No students found for your university yet.'
+              : 'No at-risk students detected — great job!'}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -159,7 +188,10 @@ export default function InterventionPage() {
                           {s.cgpa != null && `CGPA ${s.cgpa}`}
                         </p>
                       </div>
-                      <div className={`text-2xl font-black ${rc.text}`}>{s.careerReadinessScore}%</div>
+                      <div className="text-right">
+                        <div className={`text-2xl font-black ${rc.text}`}>{s.careerReadinessScore}%</div>
+                        <GrowthBadge growth={s.growth} />
+                      </div>
                     </div>
 
                     {(s.skills?.length > 0) && (

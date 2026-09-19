@@ -163,7 +163,7 @@ export const universityApi = {
   batchUpload: (formData: FormData) =>
     api.post('/api/university/students/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   getEmployabilityMetrics: () => api.get('/api/university/employability'),
-  getAtRiskStudents: () => api.get('/api/university/intervention'),
+  getAtRiskStudents: (all?: boolean) => api.get('/api/university/intervention', { params: all ? { all: 'true' } : {} }),
   getPendingCompanies: () => api.get('/api/university/companies/pending'),
   verifyCompany: (id: string, data: { status: string; comment?: string }) =>
     api.put(`/api/university/companies/${id}/verify`, data),
