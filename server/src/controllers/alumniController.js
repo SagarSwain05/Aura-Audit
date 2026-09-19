@@ -1,11 +1,35 @@
 const Alumni = require('../models/Alumni');
 const Student = require('../models/Student');
+const University = require('../models/University');
 const Notification = require('../models/Notification');
 const ConnectionRequest = require('../models/ConnectionRequest');
 
 const RECENTLY_ACTIVE_DAYS = 30;
 
 const escapeRegex = (s = '') => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// A student's "university network" for alumni matching is wider than just
+// their exact institution: in India a university (e.g. BPUT) typically has
+// many affiliated colleges, and alumni affinity naturally spans the whole
+// network, not just one college. So this includes: the student's own
+// institution, its parent university (if it's a college), every sibling
+// college under that same parent, and — if the student's own institution
+// IS a parent university — every college affiliated to it.
+async function getUniversityNetworkIds(universityId) {
+  const uni = await University.findById(universityId);
+  if (!uni) return [universityId];
+
+  const ids = new Set([String(universityId)]);
+  if (uni.parentUniversity) {
+    ids.add(String(uni.parentUniversity));
+    const siblings = await University.find({ parentUniversity: uni.parentUniversity }).distinct('_id');
+    siblings.forEach((id) => ids.add(String(id)));
+  } else {
+    const children = await University.find({ parentUniversity: uni._id }).distinct('_id');
+    children.forEach((id) => ids.add(String(id)));
+  }
+  return Array.from(ids);
+}
 
 // GET /api/alumni/me — my own alumni profile (or defaults to prefill the edit form)
 exports.getMyAlumniProfile = async (req, res) => {
@@ -50,7 +74,8 @@ exports.getDirectory = async (req, res) => {
 
   const alumniQuery = {};
   if (scope === 'university' && student.university) {
-    const sameUniStudentIds = await Student.find({ university: student.university }).distinct('_id');
+    const networkUniIds = await getUniversityNetworkIds(student.university);
+    const sameUniStudentIds = await Student.find({ university: { $in: networkUniIds } }).distinct('_id');
     alumniQuery.student = { $in: sameUniStudentIds, $ne: student._id };
   } else {
     alumniQuery.student = { $ne: student._id };

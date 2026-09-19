@@ -166,6 +166,7 @@ async function main() {
       isPlaced: !!isPlaced, placementDetails,
       careerReadinessScore: Math.round((cgpa / 10) * 40 + skills.length * 8 + randInt(0, 15)),
       profileCompleted: true,
+      isDemo: true,
     });
 
     if (isPlaced) placedDemoStudents.push(student);

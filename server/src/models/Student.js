@@ -108,6 +108,10 @@ const studentSchema = new mongoose.Schema({
   isTemporaryPassword: { type: Boolean, default: false },
   temporaryPassword: { type: String, select: false },
   profileCompleted: { type: Boolean, default: false },
+  // True only for seed-script-generated demo records — lets real students
+  // stay findable/sortable ahead of demo data rather than being buried by
+  // whatever volume of demo records exists for a university.
+  isDemo: { type: Boolean, default: false },
 }, { timestamps: true });
 
 // ── Methods ───────────────────────────────────────────────

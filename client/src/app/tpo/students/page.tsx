@@ -19,6 +19,7 @@ interface Student {
   skills: { name: string }[]
   rollNumber?: string
   alumniListed?: boolean
+  isDemo?: boolean
 }
 
 export default function TPOStudentsPage() {
@@ -189,6 +190,7 @@ export default function TPOStudentsPage() {
                   <p className="font-semibold text-sm">{s.name}</p>
                   {s.rollNumber && <span className="text-xs text-aura-muted">{s.rollNumber}</span>}
                   {s.isPlaced && <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-400/10 text-emerald-400">Placed</span>}
+                  {s.isDemo && <span className="text-xs px-1.5 py-0.5 rounded-full bg-white/5 text-aura-muted" title="Sample data for demo purposes">Demo</span>}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-xs text-aura-muted">
                   {s.department && <span>{s.department}</span>}

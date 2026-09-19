@@ -161,8 +161,11 @@ exports.getStudents = async (req, res) => {
     { rollNumber: new RegExp(q, 'i') },
   ];
 
+  // Real students always sort ahead of demo/seed data, regardless of volume
+  // — otherwise a batch of demo records (all freshly created) buries real
+  // students on later pages under the default newest-first order.
   const [students, total] = await Promise.all([
-    Student.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(Number(limit)),
+    Student.find(filter).sort({ isDemo: 1, createdAt: -1 }).skip((page - 1) * limit).limit(Number(limit)),
     Student.countDocuments(filter),
   ]);
 
