@@ -96,6 +96,7 @@ export interface Audit {
     fallback?: boolean
   }
   status: 'processing' | 'completed' | 'failed'
+  errorMessage?: string | null
   blindMode: boolean
   createdAt: string
 }

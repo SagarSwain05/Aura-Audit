@@ -232,7 +232,10 @@ exports.retryAudit = async (req, res) => {
   const audit = await Audit.findOne({ _id: req.params.id, user: req.user._id });
   if (!audit) return res.status(404).json({ message: 'Audit not found' });
 
-  const isFallback = audit.resumeMeta?.fallback === true || audit.status === 'failed';
+  // errorMessage is the reliable signal — resumeMeta.fallback was silently
+  // dropped by an incomplete schema for every audit created before this fix
+  // (see Audit.js), so checking it alone would miss those permanently.
+  const isFallback = !!audit.errorMessage || audit.resumeMeta?.fallback === true || audit.status === 'failed';
   if (!isFallback) {
     return res.status(400).json({ message: 'This audit already has full AI results — nothing to retry.' });
   }

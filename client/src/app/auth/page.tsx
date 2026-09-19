@@ -106,6 +106,11 @@ function AuthForm() {
         const { token, user: loggedUser } = res.data
         setToken(token)
         setUser(loggedUser)
+        // Nudge the AI engine awake right at login — the strongest signal
+        // that AI features are about to be used, distinct from the root
+        // layout's once-per-load nudge (soft client-side navigation after
+        // this doesn't remount the layout, so this is often the freshest ping).
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/wake-ai`, { method: 'POST' }).catch(() => {})
         toast.success('Welcome back!')
         const userRole = loggedUser.role as Role
         router.push(ROLE_REDIRECTS[userRole] || '/upload')

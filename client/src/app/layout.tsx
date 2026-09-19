@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { Toaster } from 'react-hot-toast'
 import { ThemeProvider } from '@/components/ThemeProvider'
+import AIWakeup from '@/components/AIWakeup'
 
 export const metadata: Metadata = {
   title: 'Aura-Audit — Auditing the past to engineer your future',
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased" style={{ backgroundColor: 'var(--aura-bg)', color: 'var(--aura-text)' }}>
         <ThemeProvider>
+          <AIWakeup />
           {children}
           <Toaster
             position="top-right"

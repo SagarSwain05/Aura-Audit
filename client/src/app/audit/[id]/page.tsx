@@ -85,7 +85,10 @@ export default function AuditPage() {
 
   const isProcessing = audit.status === 'processing'
   const isFailed = audit.status === 'failed'
-  const isFallback = audit.status === 'completed' && audit.resumeMeta?.fallback === true
+  // errorMessage is the reliable signal — resumeMeta.fallback was silently
+  // dropped by an incomplete schema on every audit saved before that field
+  // existed, so checking it alone misses those permanently.
+  const isFallback = audit.status === 'completed' && (!!audit.errorMessage || audit.resumeMeta?.fallback === true)
 
   const handleRetry = async () => {
     setRetrying(true)

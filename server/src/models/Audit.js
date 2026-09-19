@@ -78,6 +78,13 @@ const auditSchema = new mongoose.Schema({
       total_metrics: Number,
     },
     weak_verbs_count: Number,
+    // Previously missing from this sub-schema, so Mongoose silently
+    // stripped it on save whenever buildFallbackAuditResult() set it —
+    // every fallback audit persisted resumeMeta as {} instead of
+    // {fallback: true}, which meant the "Retry Analysis" UI could never
+    // detect a fallback audit at all. errorMessage (below) is the
+    // reliable signal in the meantime and going forward.
+    fallback: Boolean,
   },
 
   // Status

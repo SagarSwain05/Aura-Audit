@@ -2,6 +2,7 @@ require('dotenv').config();
 require('express-async-errors');
 
 const express = require('express');
+const axios = require('axios');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -77,6 +78,22 @@ app.use('/api/university', universityRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/alumni', alumniRoutes);
 
+// POST /api/wake-ai — fire-and-forget nudge to the AI engine. Public (no
+// auth) and deliberately non-blocking: the frontend calls this as early as
+// possible in a user's session (root layout mount, login) so a sleeping AI
+// engine starts its ~30-60s cold boot WHILE the user is still navigating
+// the dashboard, rather than only starting when they actually submit an AI
+// request. Always responds immediately regardless of the AI engine's state
+// — this is a nudge, not a health check (use GET /health on the AI engine
+// directly for that).
+app.post('/api/wake-ai', (req, res) => {
+  if (process.env.AI_ENGINE_URL) {
+    const aiUrl = process.env.AI_ENGINE_URL.replace(/\/+$/, '');
+    axios.get(`${aiUrl}/health`, { timeout: 20000 }).catch(() => {});
+  }
+  res.json({ ok: true });
+});
+
 // ── Error Handler ──────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('❌', err.message);
@@ -102,7 +119,6 @@ global.emitAuditUpdate = (auditId, data) => io.to(`audit:${auditId}`).emit('audi
 // succeeded. Pinging it periodically — as long as THIS service is awake —
 // keeps it warm for real requests without needing external cron infra.
 if (process.env.AI_ENGINE_URL) {
-  const axios = require('axios');
   const AI_ENGINE_URL = process.env.AI_ENGINE_URL.replace(/\/+$/, '');
   setInterval(() => {
     axios.get(`${AI_ENGINE_URL}/health`, { timeout: 15000 }).catch(() => {});
