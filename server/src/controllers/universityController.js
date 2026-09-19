@@ -1,3 +1,4 @@
+const axios = require('axios');
 const University = require('../models/University');
 const Student = require('../models/Student');
 const User = require('../models/User');
@@ -6,6 +7,8 @@ const Alumni = require('../models/Alumni');
 const Notice = require('../models/Notice');
 const bcrypt = require('bcryptjs');
 const csv = require('csv-parse/sync');
+
+const AI_ENGINE_URL = (process.env.AI_ENGINE_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
 // GET /api/university/profile
 exports.getProfile = async (req, res) => {
@@ -22,57 +25,136 @@ exports.updateProfile = async (req, res) => {
   res.json({ university: uni });
 };
 
+// Shared by the dashboard and AI insights — the same real numbers should
+// drive both what's displayed and what the AI reasons about.
+async function computeCohortStats(uni) {
+  const Company = require('../models/Company');
+  const [students, pendingCompaniesCount] = await Promise.all([
+    Student.find({ university: uni._id }),
+    Company.countDocuments({ 'kycDocuments.status': 'pending' }),
+  ]);
+
+  const placed = students.filter(s => s.isPlaced);
+  const atRisk = students.filter(s => !s.isPlaced && s.careerReadinessScore < 40);
+
+  const deptMap = {};
+  students.forEach(s => {
+    const dept = s.department || 'Unknown';
+    if (!deptMap[dept]) deptMap[dept] = { total: 0, scores: [], placed: 0 };
+    deptMap[dept].total++;
+    deptMap[dept].scores.push(s.careerReadinessScore || 0);
+    if (s.isPlaced) deptMap[dept].placed++;
+  });
+  const departmentStats = Object.entries(deptMap).map(([department, d]) => ({
+    department,
+    count: d.total,
+    placed: d.placed,
+    avgScore: d.scores.length ? Math.round(d.scores.reduce((a, b) => a + b, 0) / d.scores.length) : 0,
+  }));
+
+  const scores = students.map(s => s.careerReadinessScore || 0);
+  const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+
+  // Skill gap = a skill fewer than 1/3 of the cohort has, among the skills
+  // that DO appear (i.e. relevant-but-underrepresented, not just "rare").
+  const skillMap = {};
+  students.forEach(s => s.skills.forEach(sk => { skillMap[sk.name] = (skillMap[sk.name] || 0) + 1; }));
+  const topSkillGaps = Object.entries(skillMap)
+    .filter(([, count]) => students.length > 0 && count / students.length < 0.34)
+    .sort((a, b) => a[1] - b[1])
+    .slice(0, 8)
+    .map(([name]) => name);
+
+  const recentPlacements = placed
+    .filter(s => s.placementDetails?.joiningDate)
+    .sort((a, b) => new Date(b.placementDetails.joiningDate) - new Date(a.placementDetails.joiningDate))
+    .slice(0, 8)
+    .map(s => ({
+      name: s.name,
+      company: s.placementDetails.companyName,
+      role: s.placementDetails.jobRole,
+      package: s.placementDetails.package,
+    }));
+
+  return {
+    stats: {
+      totalStudents: students.length,
+      placedStudents: placed.length,
+      avgScore,
+      atRiskCount: atRisk.length,
+      pendingCompanies: pendingCompaniesCount,
+    },
+    topSkillGaps,
+    departmentStats,
+    recentPlacements,
+  };
+}
+
 // GET /api/university/dashboard
 exports.getDashboard = async (req, res) => {
   const uni = await University.findOne({ tpoEmail: req.user.email });
   if (!uni) return res.status(404).json({ message: 'Not found' });
 
-  const students = await Student.find({ university: uni._id });
-  const placed = students.filter(s => s.isPlaced);
-  const unplaced = students.filter(s => !s.isPlaced);
+  const cohort = await computeCohortStats(uni);
+  res.json({ university: uni, ...cohort });
+};
 
-  // Department distribution
-  const deptMap = {};
-  students.forEach(s => { deptMap[s.department || 'Unknown'] = (deptMap[s.department || 'Unknown'] || 0) + 1; });
+// GET /api/university/insights — AI cohort analysis, cached for 12h unless
+// ?refresh=true. Sends only aggregate numbers to the AI engine, never
+// individual student data.
+const INSIGHTS_TTL_MS = 12 * 60 * 60 * 1000;
 
-  // Score distribution
-  const scores = students.map(s => s.careerReadinessScore);
-  const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+exports.getInsights = async (req, res) => {
+  const uni = await University.findOne({ tpoEmail: req.user.email });
+  if (!uni) return res.status(404).json({ message: 'Not found' });
 
-  // Skill frequency
-  const skillMap = {};
-  students.forEach(s => s.skills.forEach(sk => { skillMap[sk.name] = (skillMap[sk.name] || 0) + 1; }));
-  const topSkills = Object.entries(skillMap).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count }));
+  const isFresh = uni.aiInsights?.generatedAt &&
+    (Date.now() - new Date(uni.aiInsights.generatedAt).getTime()) < INSIGHTS_TTL_MS;
+  if (isFresh && req.query.refresh !== 'true') {
+    return res.json({ summary: uni.aiInsights.summary, actions: uni.aiInsights.actions, generatedAt: uni.aiInsights.generatedAt, cached: true });
+  }
 
-  res.json({
-    university: uni,
-    stats: {
-      total: students.length,
-      placed: placed.length,
-      unplaced: unplaced.length,
-      avgCareerScore: avgScore,
-      placementRate: students.length ? Math.round((placed.length / students.length) * 100) : 0,
-    },
-    departmentDistribution: deptMap,
-    scoreDistribution: {
-      excellent: scores.filter(s => s >= 80).length,
-      good: scores.filter(s => s >= 60 && s < 80).length,
-      fair: scores.filter(s => s >= 40 && s < 60).length,
-      atRisk: scores.filter(s => s < 40).length,
-    },
-    topSkills,
-  });
+  const cohort = await computeCohortStats(uni);
+  if (cohort.stats.totalStudents === 0) {
+    return res.json({ summary: 'No students yet — insights will appear once your roster has data.', actions: [], cached: false });
+  }
+
+  try {
+    const aiRes = await axios.post(`${AI_ENGINE_URL}/api/v1/university/insights`, {
+      universityName: uni.name,
+      totalStudents: cohort.stats.totalStudents,
+      placedStudents: cohort.stats.placedStudents,
+      avgScore: cohort.stats.avgScore,
+      atRiskCount: cohort.stats.atRiskCount,
+      departmentStats: cohort.departmentStats,
+      topSkillGaps: cohort.topSkillGaps,
+    }, {
+      timeout: 150000,
+      headers: req.headers['x-user-gemini-key'] ? { 'x-user-gemini-key': req.headers['x-user-gemini-key'] } : {},
+    });
+
+    uni.aiInsights = { summary: aiRes.data.summary, actions: aiRes.data.actions, generatedAt: new Date() };
+    await uni.save();
+
+    res.json({ summary: aiRes.data.summary, actions: aiRes.data.actions, generatedAt: uni.aiInsights.generatedAt, cached: false });
+  } catch (err) {
+    console.warn('University insights AI unavailable:', err.message);
+    res.status(502).json({ message: 'AI engine is temporarily unavailable — try again shortly.' });
+  }
 };
 
 // GET /api/university/students
 exports.getStudents = async (req, res) => {
   const uni = await University.findOne({ tpoEmail: req.user.email });
-  const { department, status, q, page = 1, limit = 30 } = req.query;
+  const { department, status, isPlaced, q, page = 1, limit = 30 } = req.query;
 
   const filter = { university: uni._id };
   if (department) filter.department = department;
   if (status === 'placed') filter.isPlaced = true;
   if (status === 'unplaced') filter.isPlaced = false;
+  // Placements page filters via ?isPlaced=true/false rather than ?status=placed/unplaced
+  if (isPlaced === 'true') filter.isPlaced = true;
+  if (isPlaced === 'false') filter.isPlaced = false;
   if (q) filter.$or = [
     { name: new RegExp(q, 'i') },
     { email: new RegExp(q, 'i') },
@@ -243,26 +325,85 @@ exports.batchUpload = async (req, res) => {
 // GET /api/university/employability
 exports.getEmployabilityMetrics = async (req, res) => {
   const uni = await University.findOne({ tpoEmail: req.user.email });
+  if (!uni) return res.status(404).json({ message: 'Not found' });
   const students = await Student.find({ university: uni._id });
 
+  const placedCount = students.filter(s => s.isPlaced).length;
+  const scores = students.map(s => s.careerReadinessScore || 0);
+  const cgpas = students.map(s => s.cgpa || 0).filter(c => c > 0);
+  const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+  const avgCGPA = cgpas.length ? cgpas.reduce((a, b) => a + b, 0) / cgpas.length : 0;
+
+  // By department
   const byDept = {};
   students.forEach(s => {
     const dept = s.department || 'Unknown';
-    if (!byDept[dept]) byDept[dept] = { total: 0, scores: [], placed: 0 };
+    if (!byDept[dept]) byDept[dept] = { total: 0, scores: [], placed: 0, cgpas: [] };
     byDept[dept].total++;
-    byDept[dept].scores.push(s.careerReadinessScore);
+    byDept[dept].scores.push(s.careerReadinessScore || 0);
+    if (s.cgpa) byDept[dept].cgpas.push(s.cgpa);
     if (s.isPlaced) byDept[dept].placed++;
   });
-
-  const deptMetrics = Object.entries(byDept).map(([dept, data]) => ({
+  const byDepartment = Object.entries(byDept).map(([dept, d]) => ({
     department: dept,
-    total: data.total,
-    placed: data.placed,
-    avgScore: data.scores.length ? Math.round(data.scores.reduce((a, b) => a + b, 0) / data.scores.length) : 0,
-    placementRate: Math.round((data.placed / data.total) * 100),
+    total: d.total,
+    count: d.total,
+    placed: d.placed,
+    avgScore: d.scores.length ? Math.round(d.scores.reduce((a, b) => a + b, 0) / d.scores.length) : 0,
+    avgCGPA: d.cgpas.length ? Number((d.cgpas.reduce((a, b) => a + b, 0) / d.cgpas.length).toFixed(2)) : 0,
+    placementRate: d.total ? Math.round((d.placed / d.total) * 100) : 0,
   }));
 
-  res.json({ deptMetrics, totalStudents: students.length });
+  // Skill distribution — top skills as a % of the cohort that has them
+  const skillMap = {};
+  students.forEach(s => s.skills.forEach(sk => { skillMap[sk.name] = (skillMap[sk.name] || 0) + 1; }));
+  const skillDistribution = Object.entries(skillMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([skill, count]) => ({ skill, count, percentage: students.length ? Math.round((count / students.length) * 100) : 0 }));
+
+  // Score distribution buckets for the pie chart
+  const buckets = [
+    { range: '80-100', min: 80, max: 101 },
+    { range: '60-79', min: 60, max: 80 },
+    { range: '40-59', min: 40, max: 60 },
+    { range: '0-39', min: 0, max: 40 },
+  ];
+  const scoreDistribution = buckets
+    .map(b => ({ range: b.range, count: scores.filter(s => s >= b.min && s < b.max).length }))
+    .filter(b => b.count > 0);
+
+  // Year-wise overview
+  const byYear = {};
+  students.forEach(s => {
+    const year = s.year || 0;
+    if (!byYear[year]) byYear[year] = { scores: [], placed: 0, total: 0 };
+    byYear[year].total++;
+    byYear[year].scores.push(s.careerReadinessScore || 0);
+    if (s.isPlaced) byYear[year].placed++;
+  });
+  const yearWise = Object.entries(byYear)
+    .filter(([year]) => Number(year) > 0)
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([year, d]) => ({
+      year: Number(year),
+      total: d.total,
+      placed: d.placed,
+      avgScore: d.scores.length ? Math.round(d.scores.reduce((a, b) => a + b, 0) / d.scores.length) : 0,
+    }));
+
+  res.json({
+    overall: {
+      avgScore,
+      placementRate: students.length ? Math.round((placedCount / students.length) * 100) : 0,
+      avgCGPA,
+      totalStudents: students.length,
+    },
+    byDepartment,
+    skillDistribution,
+    scoreDistribution,
+    yearWise,
+  });
 };
 
 // GET /api/university/intervention  — at-risk students

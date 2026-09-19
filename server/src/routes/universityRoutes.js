@@ -7,6 +7,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 
 router.use(protect, requireRole('tpo', 'admin'));
 router.get('/dashboard', c.getDashboard);
+router.get('/insights', c.getInsights);
 router.get('/profile', c.getProfile);
 router.put('/profile', c.updateProfile);
 router.get('/students', c.getStudents);

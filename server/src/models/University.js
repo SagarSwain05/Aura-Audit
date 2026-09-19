@@ -24,6 +24,13 @@ const universitySchema = new mongoose.Schema({
   totalStudents: { type: Number, default: 0 },
   topSkillGaps: [String],
   skillDistribution: { type: Map, of: Number }, // skill -> % of students who have it
+  // Cached AI cohort analysis — regenerated on demand (not every page load,
+  // since it's an LLM call), see GET /api/university/insights.
+  aiInsights: {
+    summary: { type: String, default: '' },
+    actions: { type: mongoose.Schema.Types.Mixed, default: [] },
+    generatedAt: Date,
+  },
 }, { timestamps: true });
 
 universitySchema.index({ name: 'text' });

@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Users, TrendingUp, Building2, AlertTriangle, GraduationCap, ChevronRight } from 'lucide-react'
+import { Users, TrendingUp, Building2, AlertTriangle, GraduationCap, ChevronRight, Sparkles, RefreshCw, Loader2 } from 'lucide-react'
 import { universityApi } from '@/lib/api'
 import Link from 'next/link'
+import toast from 'react-hot-toast'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 interface Dashboard {
@@ -15,13 +16,49 @@ interface Dashboard {
   recentPlacements: { name: string; company: string; role: string; package: number }[]
 }
 
+interface InsightAction {
+  priority: 'high' | 'medium' | 'low'
+  action: string
+  reason: string
+}
+
+interface Insights {
+  summary: string
+  actions: InsightAction[]
+  generatedAt?: string
+  cached?: boolean
+}
+
+const PRIORITY_COLOR: Record<string, string> = {
+  high: 'bg-red-400/10 text-red-400 border-red-400/20',
+  medium: 'bg-yellow-400/10 text-yellow-400 border-yellow-400/20',
+  low: 'bg-white/5 text-aura-muted border-white/10',
+}
+
 export default function TPOHome() {
   const [data, setData] = useState<Dashboard | null>(null)
   const [loading, setLoading] = useState(true)
+  const [insights, setInsights] = useState<Insights | null>(null)
+  const [insightsLoading, setInsightsLoading] = useState(true)
+  const [regenerating, setRegenerating] = useState(false)
 
   useEffect(() => {
     universityApi.getDashboard().then((r) => setData(r.data)).catch(() => {}).finally(() => setLoading(false))
+    universityApi.getInsights().then((r) => setInsights(r.data)).catch(() => {}).finally(() => setInsightsLoading(false))
   }, [])
+
+  const regenerateInsights = async () => {
+    setRegenerating(true)
+    try {
+      const r = await universityApi.getInsights(true)
+      setInsights(r.data)
+      toast.success('Insights refreshed')
+    } catch {
+      toast.error('AI engine unavailable — try again shortly')
+    } finally {
+      setRegenerating(false)
+    }
+  }
 
   if (loading) return (
     <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -49,6 +86,47 @@ export default function TPOHome() {
         <Link href="/tpo/upload" className="btn-primary flex items-center gap-2 text-sm px-4 py-2">
           <Users className="w-4 h-4" /> Upload Students
         </Link>
+      </div>
+
+      {/* AI Cohort Insights */}
+      <div className="glass-card p-5 border-aura-purple/20">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-aura-purple-light" /> AI Cohort Insights
+          </h2>
+          <button
+            onClick={regenerateInsights}
+            disabled={regenerating || insightsLoading}
+            className="text-xs px-3 py-1.5 rounded-lg bg-white/5 text-aura-muted hover:bg-white/10 flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {regenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Refresh
+          </button>
+        </div>
+        {insightsLoading ? (
+          <div className="h-16 flex items-center text-aura-muted text-sm">
+            <Loader2 className="w-4 h-4 animate-spin mr-2" /> Analyzing your cohort...
+          </div>
+        ) : !insights ? (
+          <p className="text-sm text-aura-muted">AI insights unavailable right now — try refreshing.</p>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-aura-muted-light">{insights.summary}</p>
+            {insights.actions?.length > 0 && (
+              <div className="space-y-2">
+                {insights.actions.map((a, i) => (
+                  <div key={i} className={`p-3 rounded-xl border text-xs ${PRIORITY_COLOR[a.priority] || PRIORITY_COLOR.low}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-medium flex-1">{a.action}</p>
+                      <span className="uppercase text-[9px] font-bold tracking-wide shrink-0">{a.priority}</span>
+                    </div>
+                    {a.reason && <p className="opacity-80 mt-1">{a.reason}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

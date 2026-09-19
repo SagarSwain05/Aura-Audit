@@ -153,6 +153,7 @@ export const companyApi = {
 // ── University ─────────────────────────────────────────
 export const universityApi = {
   getDashboard: () => api.get('/api/university/dashboard'),
+  getInsights: (refresh?: boolean) => api.get('/api/university/insights', { params: refresh ? { refresh: 'true' } : {} }),
   getProfile: () => api.get('/api/university/profile'),
   updateProfile: (data: Record<string, unknown>) => api.put('/api/university/profile', data),
   getStudents: (params?: Record<string, string>) => api.get('/api/university/students', { params }),
