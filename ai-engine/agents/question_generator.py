@@ -77,7 +77,7 @@ async def generate_questions(skill: str, current_level: str, target_level: str, 
         skill=skill, current_level=current_level, target_level=target_level,
         variation_seed=variation_seed,
     )
-    data = await llm_generate_json(prompt, user_key=user_key)
+    data = await llm_generate_json(prompt, user_key=user_key, category="assessment")
     questions = data.get("questions", [])[:10]
     for i, q in enumerate(questions):
         q["id"] = i + 1

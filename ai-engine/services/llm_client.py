@@ -15,20 +15,30 @@ concurrent load (many users hitting the AI engine at once):
   - Shorter inter-key pause instead of long exponential backoff — with
     cooldown-aware rotation, the next key tried is a different quota bucket,
     so there's no need to wait out THIS key's specific limit before moving on.
+  - Per-category dedicated key pools: each caller passes a `category`
+    (e.g. "audit", "assessment", "jobs", "interview", "market"). If
+    GEMINI_KEY_{CATEGORY}_1.. / GROQ_KEY_{CATEGORY}_1.. env vars are set,
+    that category gets its OWN isolated pool + rotation index + cooldown
+    tracking, so heavy use or a bad patch on one feature can't starve every
+    other feature of the shared pool. Falls back to the shared pool
+    (GEMINI_KEY_1../GROQ_KEY_1..) when no dedicated keys exist for a
+    category — fully backward compatible, zero behavior change until
+    dedicated keys are actually added.
 
 Priority order:
   1. User-provided key (passed per-request — highest priority, bypasses the
      circuit breaker since it's a separate, non-shared quota)
-  2. Gemini key pool: GEMINI_KEY_1 … GEMINI_KEY_N + GEMINI_API_KEY (round-robin,
-     cooldown-aware)
-  3. Groq fallback: GROQ_KEY_1 … GROQ_KEY_N + GROQ_API_KEY (if all Gemini keys
-     are exhausted/cooling)
+  2. Gemini key pool for this category — dedicated if configured, else
+     shared GEMINI_KEY_1 … GEMINI_KEY_N + GEMINI_API_KEY (round-robin,
+     cooldown-aware). Tried across most/all configured keys before giving
+     up on Gemini for this call, not just the first one or two.
+  3. Groq fallback for this category — same dedicated-or-shared pattern.
 
 Usage:
     from services.llm_client import llm_generate, llm_generate_json
 
-    text = await llm_generate("your prompt", user_key="optional-user-key")
-    data = await llm_generate_json("your prompt")   # returns parsed dict
+    text = await llm_generate("your prompt", category="audit", user_key="optional-user-key")
+    data = await llm_generate_json("your prompt", category="assessment")
 """
 
 import os
@@ -46,52 +56,77 @@ MAX_CONCURRENT_LLM_CALLS = int(os.getenv("MAX_CONCURRENT_LLM_CALLS", "8"))
 KEY_COOLDOWN_SECONDS = float(os.getenv("KEY_COOLDOWN_SECONDS", "45"))
 CIRCUIT_FAILURE_THRESHOLD = int(os.getenv("CIRCUIT_FAILURE_THRESHOLD", "5"))
 CIRCUIT_OPEN_SECONDS = float(os.getenv("CIRCUIT_OPEN_SECONDS", "20"))
+# How many keys to try per call before giving up on a provider. Previously 2
+# for Gemini / 3 for Groq — far too shallow for a 10/8-key pool: a single
+# transient blip (Gemini's own "high demand" 503s are common right after a
+# cold start) on the first one or two keys abandoned the whole 10-key pool
+# and fell to Groq, which then did the same thing on its 8-key pool. Now
+# tries most of each pool before actually failing over.
+GEMINI_MAX_RETRIES_DEFAULT = int(os.getenv("GEMINI_MAX_RETRIES", "6"))
+GROQ_MAX_RETRIES_DEFAULT = int(os.getenv("GROQ_MAX_RETRIES", "6"))
 
 _llm_semaphore = asyncio.Semaphore(MAX_CONCURRENT_LLM_CALLS)
 
 # ── Key Pool Helpers ──────────────────────────────────────────────────────────
 
-_gemini_index_lock = threading.Lock()
-_gemini_index = 0
-
-_groq_index_lock = threading.Lock()
-_groq_index = 0
+# Per-category rotation index + lock, created lazily so any category string
+# works without pre-registration.
+_index_locks: dict[str, threading.Lock] = {}
+_indexes: dict[str, int] = {}
+_index_registry_lock = threading.Lock()
 
 _cooldown_lock = threading.Lock()
 _cooldowns: dict[str, float] = {}  # f"{provider}:{key}" -> monotonic resume time
 
 
-def _gemini_keys() -> list[str]:
-    """Collect all configured Gemini keys, numbered first then legacy single."""
+def _numbered_keys(prefix: str) -> list[str]:
     keys: list[str] = []
     for i in range(1, 10):
-        k = os.getenv(f"GEMINI_KEY_{i}", "").strip()
+        k = os.getenv(f"{prefix}_{i}", "").strip()
         if k:
             keys.append(k)
+    return keys
+
+
+def _shared_gemini_keys() -> list[str]:
+    keys = _numbered_keys("GEMINI_KEY")
     main = os.getenv("GEMINI_API_KEY", "").strip()
     if main and main not in keys:
         keys.append(main)
     return keys
 
 
-def _groq_keys() -> list[str]:
-    keys: list[str] = []
-    for i in range(1, 10):
-        k = os.getenv(f"GROQ_KEY_{i}", "").strip()
-        if k:
-            keys.append(k)
+def _shared_groq_keys() -> list[str]:
+    keys = _numbered_keys("GROQ_KEY")
     main = os.getenv("GROQ_API_KEY", "").strip()
     if main and main not in keys:
         keys.append(main)
     return keys
 
 
+def _gemini_keys(category: str = "general") -> list[str]:
+    """
+    Dedicated pool for this category (GEMINI_KEY_{CATEGORY}_1..9) if any are
+    configured, else the shared pool. Category names are free-form strings
+    (e.g. "audit", "assessment", "jobs") — uppercased for the env var lookup.
+    """
+    dedicated = _numbered_keys(f"GEMINI_KEY_{category.upper()}")
+    return dedicated if dedicated else _shared_gemini_keys()
+
+
+def _groq_keys(category: str = "general") -> list[str]:
+    dedicated = _numbered_keys(f"GROQ_KEY_{category.upper()}")
+    return dedicated if dedicated else _shared_groq_keys()
+
+
 def provider_status() -> dict:
     """Return non-secret provider configuration status for health/readiness checks."""
+    gemini = _shared_gemini_keys()
+    groq = _shared_groq_keys()
     return {
-        "gemini_keys_configured": len(_gemini_keys()),
-        "groq_keys_configured": len(_groq_keys()),
-        "has_any_llm_provider": bool(_gemini_keys() or _groq_keys()),
+        "gemini_keys_configured": len(gemini),
+        "groq_keys_configured": len(groq),
+        "has_any_llm_provider": bool(gemini or groq),
     }
 
 
@@ -106,7 +141,24 @@ def _is_cooling(provider: str, key: str) -> bool:
         return until is not None and time.monotonic() < until
 
 
-def _ordered_attempt_keys(provider: str, all_keys: list[str], count: int, index_ref: list) -> list[str]:
+def _index_ref(provider: str, category: str):
+    """Lazily creates a per-(provider, category) rotation index + lock."""
+    name = f"{provider}:{category}"
+    with _index_registry_lock:
+        if name not in _index_locks:
+            _index_locks[name] = threading.Lock()
+            _indexes[name] = 0
+
+    def get():
+        return _indexes[name]
+
+    def set_(v):
+        _indexes[name] = v
+
+    return (_index_locks[name], get, set_)
+
+
+def _ordered_attempt_keys(provider: str, all_keys: list[str], count: int, index_ref: tuple) -> list[str]:
     """
     Build a rotation-fair attempt sequence, preferring keys that aren't
     currently in cooldown. Falls back to cooling keys only if every key in
@@ -130,24 +182,6 @@ def _ordered_attempt_keys(provider: str, all_keys: list[str], count: int, index_
             seen.add(k)
             out.append(k)
     return out
-
-
-def _gemini_index_ref():
-    def get():
-        return _gemini_index
-    def set_(v):
-        global _gemini_index
-        _gemini_index = v
-    return (_gemini_index_lock, get, set_)
-
-
-def _groq_index_ref():
-    def get():
-        return _groq_index
-    def set_(v):
-        global _groq_index
-        _groq_index = v
-    return (_groq_index_lock, get, set_)
 
 
 # ── Circuit breaker (both providers exhausted repeatedly -> fail fast) ────────
@@ -208,12 +242,13 @@ async def _try_gemini(
     user_key: Optional[str],
     json_mode: bool,
     max_retries: int,
+    category: str = "general",
 ) -> Optional[str]:
     """
     Try Gemini with cooldown-aware key rotation. Returns text on success,
     None if all attempted keys/retries are exhausted for this call.
     """
-    all_keys = _gemini_keys()
+    all_keys = _gemini_keys(category)
     if not all_keys and not user_key:
         return None
 
@@ -221,29 +256,29 @@ async def _try_gemini(
     if user_key:
         attempt_keys.append(user_key)
     attempt_keys += [
-        k for k in _ordered_attempt_keys("gemini", all_keys, min(max_retries, len(all_keys) or 1), _gemini_index_ref())
+        k for k in _ordered_attempt_keys("gemini", all_keys, min(max_retries, len(all_keys) or 1), _index_ref("gemini", category))
         if k not in attempt_keys
     ]
 
     for i, key in enumerate(attempt_keys):
         try:
             text = await asyncio.to_thread(_call_gemini_sync, prompt, key, json_mode)
-            print(f"✅ Gemini OK (key #{i + 1})")
+            print(f"✅ Gemini OK ({category}, key #{i + 1})")
             return text
         except Exception as e:
             err = str(e)
             is_rate = "429" in err or "RESOURCE_EXHAUSTED" in err
             if is_rate:
                 _mark_cooldown("gemini", key)
-                print(f"⚠️  Gemini key #{i + 1} rate-limited, cooling down {KEY_COOLDOWN_SECONDS:.0f}s…")
+                print(f"⚠️  Gemini key #{i + 1} ({category}) rate-limited, cooling down {KEY_COOLDOWN_SECONDS:.0f}s…")
             else:
-                print(f"⚠️  Gemini key #{i + 1} error: {err[:120]}")
+                print(f"⚠️  Gemini key #{i + 1} ({category}) error: {err[:120]}")
             # Short pause before the next (different) key — no need to wait
             # out THIS key's limit, we're not retrying it again this call.
             if i < len(attempt_keys) - 1:
                 await asyncio.sleep(min(0.3 * (i + 1) + random.uniform(0, 0.3), 2))
 
-    print("⚠️  Gemini pool exhausted for this request.")
+    print(f"⚠️  Gemini pool exhausted for this request ({category}, {len(attempt_keys)} keys tried).")
     return None
 
 
@@ -264,31 +299,31 @@ def _call_groq_sync(prompt: str, api_key: str, json_mode: bool) -> str:
     return (resp.choices[0].message.content or "").strip()
 
 
-async def _try_groq(prompt: str, json_mode: bool, max_retries: int = 3) -> Optional[str]:
+async def _try_groq(prompt: str, json_mode: bool, max_retries: int, category: str = "general") -> Optional[str]:
     """Try Groq pool with cooldown-aware rotation. Returns text or None."""
-    all_keys = _groq_keys()
+    all_keys = _groq_keys(category)
     if not all_keys:
         return None
 
-    attempt_keys = _ordered_attempt_keys("groq", all_keys, min(max_retries, len(all_keys)), _groq_index_ref())
+    attempt_keys = _ordered_attempt_keys("groq", all_keys, min(max_retries, len(all_keys)), _index_ref("groq", category))
 
     for i, key in enumerate(attempt_keys):
         try:
             text = await asyncio.to_thread(_call_groq_sync, prompt, key, json_mode)
-            print(f"✅ Groq OK (key #{i + 1})")
+            print(f"✅ Groq OK ({category}, key #{i + 1})")
             return text
         except Exception as e:
             err = str(e)
             is_rate = "429" in err or "rate_limit" in err.lower()
             if is_rate:
                 _mark_cooldown("groq", key)
-                print(f"⚠️  Groq key #{i + 1} rate-limited, cooling down {KEY_COOLDOWN_SECONDS:.0f}s…")
+                print(f"⚠️  Groq key #{i + 1} ({category}) rate-limited, cooling down {KEY_COOLDOWN_SECONDS:.0f}s…")
             else:
-                print(f"⚠️  Groq key #{i + 1} error: {err[:100]}")
+                print(f"⚠️  Groq key #{i + 1} ({category}) error: {err[:100]}")
             if i < len(attempt_keys) - 1:
                 await asyncio.sleep(min(0.3 * (i + 1) + random.uniform(0, 0.3), 2))
 
-    print("⚠️  Groq pool exhausted for this request.")
+    print(f"⚠️  Groq pool exhausted for this request ({category}, {len(attempt_keys)} keys tried).")
     return None
 
 
@@ -298,12 +333,20 @@ async def llm_generate(
     prompt: str,
     json_mode: bool = False,
     user_key: Optional[str] = None,
-    max_retries: int = 2,
+    category: str = "general",
+    max_retries: int = None,
+    groq_max_retries: int = None,
 ) -> str:
     """
     Generate text via Gemini (cooldown-aware rotation) -> Groq fallback,
     bounded by a process-wide concurrency limit so a burst of requests
     queues instead of all hammering the key pool at once.
+
+    `category` selects a dedicated key pool (GEMINI_KEY_{CATEGORY}_N /
+    GROQ_KEY_{CATEGORY}_N) if configured, else the shared pool — pass a
+    stable name per feature (e.g. "audit", "assessment", "jobs") so
+    dedicated keys can be added later without any code change.
+
     Raises RuntimeError only if all providers fail (or the circuit breaker
     is open and no user_key was given to bypass it).
     """
@@ -313,14 +356,17 @@ async def llm_generate(
             "(recovering from a recent outage — failing fast, try again shortly)."
         )
 
+    gemini_retries = max_retries if max_retries is not None else GEMINI_MAX_RETRIES_DEFAULT
+    groq_retries = groq_max_retries if groq_max_retries is not None else GROQ_MAX_RETRIES_DEFAULT
+
     async with _llm_semaphore:
-        result = await _try_gemini(prompt, user_key, json_mode, max_retries)
+        result = await _try_gemini(prompt, user_key, json_mode, gemini_retries, category)
         if result is not None:
             _record_success()
             return result
 
-        print("🔄 Switching to Groq fallback…")
-        result = await _try_groq(prompt, json_mode)
+        print(f"🔄 Switching to Groq fallback… ({category})")
+        result = await _try_groq(prompt, json_mode, groq_retries, category)
         if result is not None:
             _record_success()
             return result
@@ -341,7 +387,8 @@ def _parse_json_response(text: str) -> dict:
 async def llm_generate_json(
     prompt: str,
     user_key: Optional[str] = None,
-    max_retries: int = 2,
+    category: str = "general",
+    max_retries: int = None,
 ) -> dict:
     """
     Generate and parse JSON response.
@@ -349,12 +396,12 @@ async def llm_generate_json(
     response can't be parsed as JSON even after one retry — callers must
     handle failure explicitly instead of receiving a misleadingly "successful" {}.
     """
-    text = await llm_generate(prompt, json_mode=True, user_key=user_key, max_retries=max_retries)
+    text = await llm_generate(prompt, json_mode=True, user_key=user_key, category=category, max_retries=max_retries)
     try:
         return _parse_json_response(text)
     except Exception as e:
         print(f"⚠️  JSON parse failed: {e} | raw: {text[:200]} — retrying once")
-        text = await llm_generate(prompt, json_mode=True, user_key=user_key, max_retries=max_retries)
+        text = await llm_generate(prompt, json_mode=True, user_key=user_key, category=category, max_retries=max_retries)
         try:
             return _parse_json_response(text)
         except Exception as e2:

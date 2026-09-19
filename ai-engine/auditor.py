@@ -30,7 +30,7 @@ def _cache_key(*parts) -> str:
 
 async def analyze_resume(resume_text: str, user_key: str = None) -> dict:
     prompt = f"{RESUME_AUDITOR_PROMPT}\n\nRESUME TEXT:\n{resume_text}"
-    return await llm_generate_json(prompt, user_key=user_key)
+    return await llm_generate_json(prompt, user_key=user_key, category="audit")
 
 
 async def analyze_gap(current_skills: list, dream_role: str, experience: list, user_key: str = None) -> dict:
@@ -39,7 +39,7 @@ async def analyze_gap(current_skills: list, dream_role: str, experience: list, u
         dream_role=dream_role,
         experience="\n".join(experience),
     )
-    return await llm_generate_json(prompt, user_key=user_key)
+    return await llm_generate_json(prompt, user_key=user_key, category="gap")
 
 
 async def generate_roadmap(skills: list, dream_role: str, days: int = 30, user_key: str = None) -> dict:
@@ -49,23 +49,23 @@ async def generate_roadmap(skills: list, dream_role: str, days: int = 30, user_k
         days=days,
     )
     if user_key:
-        return await llm_generate_json(prompt, user_key=user_key)
+        return await llm_generate_json(prompt, user_key=user_key, category="roadmap")
     key = _cache_key("roadmap", sorted(s.lower() for s in skills), dream_role.lower(), days)
-    return await get_or_compute(key, _CACHE_TTL_SECONDS, lambda: llm_generate_json(prompt))
+    return await get_or_compute(key, _CACHE_TTL_SECONDS, lambda: llm_generate_json(prompt, category="roadmap"))
 
 
 async def generate_interview_questions(resume_text: str, role: str, skills: list = None, user_key: str = None) -> dict:
     skills_str = ", ".join(skills) if skills else "not specified"
     prompt = INTERVIEW_SIM_PROMPT.format(role=role, skills=skills_str, resume_text=resume_text[:3000])
-    return await llm_generate_json(prompt, user_key=user_key)
+    return await llm_generate_json(prompt, user_key=user_key, category="interview")
 
 
 async def get_market_demand(skills: list, user_key: str = None) -> dict:
     prompt = MARKET_DEMAND_PROMPT.format(skills=", ".join(skills))
     if user_key:
-        return await llm_generate_json(prompt, user_key=user_key)
+        return await llm_generate_json(prompt, user_key=user_key, category="market")
     key = _cache_key("market_demand", sorted(s.lower() for s in skills))
-    return await get_or_compute(key, _CACHE_TTL_SECONDS, lambda: llm_generate_json(prompt))
+    return await get_or_compute(key, _CACHE_TTL_SECONDS, lambda: llm_generate_json(prompt, category="market"))
 
 
 async def enhance_bullet(original: str, role_context: str = "", user_key: str = None) -> dict:
@@ -78,4 +78,4 @@ Return JSON: {{
   "reasoning": "why this is better"
 }}
 Use strong action verbs, add implied metrics if reasonable, show impact."""
-    return await llm_generate_json(prompt, user_key=user_key)
+    return await llm_generate_json(prompt, user_key=user_key, category="bullet")

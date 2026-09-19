@@ -66,7 +66,7 @@ when a free-text query is narrowed this way.
 
 Respond with ONLY the search query, nothing else."""
     try:
-        query = await llm_generate(prompt, user_key=user_key)
+        query = await llm_generate(prompt, user_key=user_key, category="jobs")
         query = re.sub(r"[^a-zA-Z0-9\s]", "", query).strip()
         if not query.lower().endswith("jobs"):
             query += " jobs"
@@ -110,7 +110,12 @@ Respond ONLY in this exact JSON format:
     "missing_skills": ["skill3", "skill4"]
 }}"""
     try:
-        data = await llm_generate_json(prompt, user_key=user_key)
+        # Scoring runs many of these concurrently (one per job); each already
+        # falls back gracefully to an unscored 0% below, so cap retry depth
+        # here rather than letting a whole batch stack up worst-case latency
+        # the way a single one-shot call (query building, resume analysis)
+        # should be allowed to.
+        data = await llm_generate_json(prompt, user_key=user_key, category="jobs", max_retries=3)
         pct = float(data.get("match_percentage", 0) or 0)
         return {
             "match_percentage": round(max(0.0, min(100.0, pct)), 1),

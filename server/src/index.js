@@ -92,6 +92,23 @@ io.on('connection', (socket) => {
 global.emitToUser = (userId, event, data) => io.to(`user:${userId}`).emit(event, data);
 global.emitAuditUpdate = (auditId, data) => io.to(`audit:${auditId}`).emit('audit-update', data);
 
+// ── AI engine keep-alive ─────────────────────────────────
+// Render's free tier spins down a service after ~15min of no inbound
+// traffic. The AI engine only gets hit when a user actively uses an AI
+// feature, so it goes cold far more often than this Node service (which
+// gets hit by every page load/poll). A cold AI engine means the FIRST AI
+// request after a gap eats a 30-60s container boot on top of the real
+// work, which reads as "AI unavailable" even though it would have
+// succeeded. Pinging it periodically — as long as THIS service is awake —
+// keeps it warm for real requests without needing external cron infra.
+if (process.env.AI_ENGINE_URL) {
+  const axios = require('axios');
+  const AI_ENGINE_URL = process.env.AI_ENGINE_URL.replace(/\/+$/, '');
+  setInterval(() => {
+    axios.get(`${AI_ENGINE_URL}/health`, { timeout: 15000 }).catch(() => {});
+  }, 10 * 60 * 1000); // every 10 min — comfortably inside Render's ~15min sleep window
+}
+
 // ── Start ──────────────────────────────────────────────
 const PORT = process.env.PORT || 5001;
 connectDB().then(() => {

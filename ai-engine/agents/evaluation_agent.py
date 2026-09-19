@@ -104,7 +104,7 @@ Return JSON only:
 }}"""
 
     try:
-        result = await llm_generate_json(prompt, user_key=user_key)
+        result = await llm_generate_json(prompt, user_key=user_key, category="evaluation")
         return {
             "questionId":    str(question["id"]),
             "score":         min(int(result.get("score", 0)), question.get("points", 10)),
@@ -165,7 +165,7 @@ Return JSON only:
 }}"""
 
     try:
-        result = await llm_generate_json(prompt, user_key=user_key)
+        result = await llm_generate_json(prompt, user_key=user_key, category="evaluation")
         return {
             "questionId":       str(question["id"]),
             "score":            min(int(result.get("score", 0)), question.get("points", 15)),
