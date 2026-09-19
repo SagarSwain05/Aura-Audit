@@ -117,6 +117,13 @@ async function main() {
   console.log(`Colleges: ${collegeCreated} created`);
 
   // ── 4. Migrate unaffiliated students to Trident ─────────────────────
+  // WARNING — this blanket-matches every student with no university set,
+  // which includes any throwaway QA/test account ever created (this bit
+  // us once: a "Mobile Test"/"Load Test 1-5"/etc. debugging batch got
+  // swept in alongside real students). Do NOT re-run this script against
+  // production without first confirming no new test accounts exist with
+  // university:null, or scope the match more tightly (e.g. explicit email
+  // list) before running again.
   const migrated = await Student.updateMany({ university: null }, { $set: { university: trident._id } });
   await User.updateMany({ university: null, role: 'student' }, { $set: { university: trident._id } });
   console.log(`Migrated ${migrated.modifiedCount} unaffiliated students to Trident Academy of Technology`);

@@ -94,3 +94,72 @@ async def get_university_insights(
         "summary": data.get("summary", ""),
         "actions": data.get("actions", []),
     }
+
+
+class StudentInterventionRequest(BaseModel):
+    studentName: str
+    department: str = ""
+    year: Optional[int] = None
+    cgpa: Optional[float] = None
+    careerReadinessScore: float
+    riskLevel: str
+    dreamRole: str = ""
+    skills: List[str] = []
+    riskFactors: List[str] = []
+
+
+STUDENT_PROMPT_TEMPLATE = """You are an expert career counselor creating a personalized intervention plan for one student who has been flagged as at-risk of remaining unplaced.
+
+Student: {student_name}
+Department: {department}{year_str}
+CGPA: {cgpa}
+Career readiness score: {score}/100 ({risk_level} risk)
+Target role: {dream_role}
+Current skills: {skills}
+Flagged issues: {risk_factors}
+
+Based ONLY on this real data, write a one-sentence situation summary and 3-5
+specific, actionable steps to help THIS student become placement-ready.
+Each action must be concrete (a specific skill to learn, a specific type of
+workshop, a specific counseling focus) and tagged with the best-fit category:
+"skill" (a specific skill/technology to learn), "workshop" (a group session
+type), "counseling" (1:1 guidance), or "mentorship" (pairing with a senior/
+alum). Do not invent data not given above.
+
+Respond ONLY in this exact JSON format:
+{{
+  "summary": "...",
+  "actions": [
+    {{"category": "skill", "action": "..."}},
+    {{"category": "workshop", "action": "..."}},
+    {{"category": "counseling", "action": "..."}}
+  ]
+}}"""
+
+
+@router.post("/university/student-intervention")
+async def get_student_intervention(
+    req: StudentInterventionRequest,
+    x_user_gemini_key: Optional[str] = Header(default=None, alias="x-user-gemini-key"),
+):
+    prompt = STUDENT_PROMPT_TEMPLATE.format(
+        student_name=req.studentName,
+        department=req.department or "Not specified",
+        year_str=f", Year {req.year}" if req.year else "",
+        cgpa=req.cgpa if req.cgpa else "Not recorded",
+        score=round(req.careerReadinessScore),
+        risk_level=req.riskLevel,
+        dream_role=req.dreamRole or "Not specified",
+        skills=", ".join(req.skills) if req.skills else "None listed",
+        risk_factors=", ".join(req.riskFactors) if req.riskFactors else "General low readiness",
+    )
+
+    try:
+        data = await llm_generate_json(prompt, user_key=x_user_gemini_key, category="intervention")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI engine unavailable: {e}")
+
+    return {
+        "summary": data.get("summary", ""),
+        "actions": data.get("actions", []),
+    }

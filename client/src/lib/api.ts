@@ -171,6 +171,7 @@ export const universityApi = {
     api.post(`/api/university/students/${id}/list-as-alumni`, data || {}),
   unlistStudentAsAlumni: (id: string) => api.delete(`/api/university/students/${id}/list-as-alumni`),
   bulkListPlacedAsAlumni: () => api.post('/api/university/students/bulk-list-as-alumni'),
+  suggestAction: (id: string) => api.post(`/api/university/students/${id}/suggest-action`),
   createNotice: (data: Record<string, unknown>) => api.post('/api/university/notices', data),
   getNotices: () => api.get('/api/university/notices'),
   updateNotice: (id: string, data: Record<string, unknown>) => api.put(`/api/university/notices/${id}`, data),

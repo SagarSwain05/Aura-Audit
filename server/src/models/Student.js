@@ -112,6 +112,21 @@ const studentSchema = new mongoose.Schema({
   // stay findable/sortable ahead of demo data rather than being buried by
   // whatever volume of demo records exists for a university.
   isDemo: { type: Boolean, default: false },
+
+  // TPO-triggered AI intervention suggestions (Intervention tab "Suggest
+  // Action") — a running log so the TPO can see what's already been
+  // recommended to a student and track follow-through.
+  interventions: [{
+    suggestedAt: { type: Date, default: Date.now },
+    riskLevel: String,
+    careerReadinessScore: Number,
+    summary: String,
+    actions: [{
+      category: { type: String, enum: ['skill', 'workshop', 'counseling', 'mentorship'] },
+      action: String,
+    }],
+    status: { type: String, enum: ['suggested', 'in_progress', 'completed'], default: 'suggested' },
+  }],
 }, { timestamps: true });
 
 // ── Methods ───────────────────────────────────────────────

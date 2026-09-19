@@ -413,20 +413,85 @@ exports.getEmployabilityMetrics = async (req, res) => {
 exports.getAtRiskStudents = async (req, res) => {
   const uni = await University.findOne({ tpoEmail: req.user.email });
   const atRisk = await Student.find({ university: uni._id, careerReadinessScore: { $lt: 40 }, isPlaced: false })
-    .select('name email department careerReadinessScore skills cgpa year')
+    .select('name email department careerReadinessScore skills cgpa year certifications dreamRole interventions')
     .sort({ careerReadinessScore: 1 });
 
   const categorized = atRisk.map(s => ({
     ...s.toObject(),
     riskLevel: s.careerReadinessScore < 20 ? 'critical' : s.careerReadinessScore < 30 ? 'high' : 'medium',
-    issues: [
-      s.skills.length < 3 ? 'Less than 3 skills' : null,
+    riskFactors: [
+      s.skills.length < 3 ? 'Fewer than 3 skills listed' : null,
       s.cgpa < 6 ? 'Low CGPA' : null,
-      s.certifications?.length === 0 ? 'No certifications' : null,
+      (s.certifications?.length || 0) === 0 ? 'No certifications' : null,
+      !s.dreamRole ? 'No target role set' : null,
     ].filter(Boolean),
+    lastSuggestion: s.interventions?.length ? s.interventions[s.interventions.length - 1] : null,
   }));
 
   res.json({ atRiskStudents: categorized, total: categorized.length });
+};
+
+// POST /api/university/students/:id/suggest-action — AI-generated, per-
+// student intervention plan (Intervention tab "Suggest Action"). Notifies
+// the student directly and logs the suggestion on their profile.
+exports.suggestAction = async (req, res) => {
+  const uni = await University.findOne({ tpoEmail: req.user.email });
+  if (!uni) return res.status(404).json({ message: 'University profile not found' });
+
+  const student = await Student.findOne({ _id: req.params.id, university: uni._id });
+  if (!student) return res.status(404).json({ message: 'Student not found in your university' });
+
+  const score = student.careerReadinessScore || 0;
+  const riskLevel = score < 20 ? 'critical' : score < 30 ? 'high' : score < 40 ? 'medium' : 'low';
+  const riskFactors = [
+    student.skills.length < 3 ? 'Fewer than 3 skills listed' : null,
+    student.cgpa < 6 ? 'Low CGPA' : null,
+    (student.certifications?.length || 0) === 0 ? 'No certifications' : null,
+    !student.dreamRole ? 'No target role set' : null,
+  ].filter(Boolean);
+
+  let aiRes;
+  try {
+    aiRes = await axios.post(`${AI_ENGINE_URL}/api/v1/university/student-intervention`, {
+      studentName: student.name,
+      department: student.department,
+      year: student.year,
+      cgpa: student.cgpa,
+      careerReadinessScore: score,
+      riskLevel,
+      dreamRole: student.dreamRole,
+      skills: student.skills.map(s => s.name),
+      riskFactors,
+    }, {
+      timeout: 150000,
+      headers: req.headers['x-user-gemini-key'] ? { 'x-user-gemini-key': req.headers['x-user-gemini-key'] } : {},
+    });
+  } catch (err) {
+    return res.status(502).json({ message: 'AI engine is temporarily unavailable — try again shortly.' });
+  }
+
+  const intervention = {
+    suggestedAt: new Date(),
+    riskLevel,
+    careerReadinessScore: score,
+    summary: aiRes.data.summary,
+    actions: aiRes.data.actions || [],
+    status: 'suggested',
+  };
+  student.interventions.push(intervention);
+  await student.save();
+
+  const actionLines = (aiRes.data.actions || []).map(a => `• ${a.action}`).join('\n');
+  const notif = await Notification.create({
+    user: student.userId,
+    type: 'career_tip',
+    title: `A career action plan from ${uni.name}`,
+    message: `${aiRes.data.summary}\n\n${actionLines}`,
+    link: '/student/home',
+  }).catch(() => null);
+  if (notif && global.emitToUser) global.emitToUser(student.userId.toString(), 'notification', notif);
+
+  res.json({ intervention });
 };
 
 // GET /api/university/companies/pending  — company KYC review

@@ -20,6 +20,7 @@ router.post('/students/:id/list-as-alumni', c.listStudentAsAlumni);
 router.delete('/students/:id/list-as-alumni', c.unlistStudentAsAlumni);
 router.get('/employability', c.getEmployabilityMetrics);
 router.get('/intervention', c.getAtRiskStudents);
+router.post('/students/:id/suggest-action', c.suggestAction);
 router.get('/companies/pending', c.getPendingCompanies);
 router.put('/companies/:id/verify', c.verifyCompany);
 router.post('/notices', c.createNotice);
