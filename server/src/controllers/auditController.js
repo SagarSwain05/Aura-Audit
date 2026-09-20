@@ -240,7 +240,7 @@ exports.retryAudit = async (req, res) => {
     return res.status(400).json({ message: 'This audit already has full AI results — nothing to retry.' });
   }
 
-  await Audit.findByIdAndUpdate(audit._id, { status: 'processing', errorMessage: null });
+  await Audit.findByIdAndUpdate(audit._id, { status: 'processing', errorMessage: null, processingStartedAt: new Date() });
   res.status(202).json({ message: 'Retrying analysis' });
 
   const userGeminiKey = req.headers['x-user-gemini-key'] || null;
@@ -261,14 +261,18 @@ const STUCK_PROCESSING_TIMEOUT_MS = 4 * 60 * 1000;
 exports.getAuditStatus = async (req, res) => {
   const audit = await Audit.findOne(
     { _id: req.params.id, user: req.user._id },
-    'status errorMessage auraScore createdAt'
+    'status errorMessage auraScore createdAt processingStartedAt'
   );
   if (!audit) return res.status(404).json({ message: 'Audit not found' });
 
   // No queue/cron exists to retry an audit if the server restarts mid-processing
   // (fire-and-forget in processAuditAsync) — self-heal here instead of leaving
-  // the client polling a status that will never change.
-  if (audit.status === 'processing' && Date.now() - audit.createdAt.getTime() > STUCK_PROCESSING_TIMEOUT_MS) {
+  // the client polling a status that will never change. Measured from
+  // processingStartedAt (reset on every retry), not createdAt — createdAt is
+  // fixed at first upload, so using it here would self-heal a legitimately
+  // in-flight retry within seconds on any audit older than 4 minutes.
+  const startedAt = audit.processingStartedAt || audit.createdAt;
+  if (audit.status === 'processing' && Date.now() - startedAt.getTime() > STUCK_PROCESSING_TIMEOUT_MS) {
     const message = 'Audit processing took too long and was likely interrupted by a server restart.';
     await Audit.findByIdAndUpdate(audit._id, buildFallbackAuditResult(message));
     return res.json({ status: 'completed', score: buildFallbackAuditResult(message).auraScore, error: message });

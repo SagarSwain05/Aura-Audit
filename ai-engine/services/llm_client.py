@@ -64,6 +64,12 @@ CIRCUIT_OPEN_SECONDS = float(os.getenv("CIRCUIT_OPEN_SECONDS", "20"))
 # tries most of each pool before actually failing over.
 GEMINI_MAX_RETRIES_DEFAULT = int(os.getenv("GEMINI_MAX_RETRIES", "6"))
 GROQ_MAX_RETRIES_DEFAULT = int(os.getenv("GROQ_MAX_RETRIES", "6"))
+# Neither SDK bounded an individual call by default, so one stalled key
+# (a common Render free-tier network hiccup) could hang far longer than the
+# "30-60 seconds" a user is told to expect — with up to 6 keys tried per
+# provider, an unbounded per-call hang compounds into a many-minute stall.
+# This caps each attempt so a bad key fails fast and rotation moves on.
+LLM_CALL_TIMEOUT_SECONDS = float(os.getenv("LLM_CALL_TIMEOUT_SECONDS", "25"))
 
 _llm_semaphore = asyncio.Semaphore(MAX_CONCURRENT_LLM_CALLS)
 
@@ -228,7 +234,10 @@ def _call_gemini_sync(
         **({"response_mime_type": "application/json"} if json_mode else {}),
     )
     selected_model = model or os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(timeout=int(LLM_CALL_TIMEOUT_SECONDS * 1000)),
+    )
     resp = client.models.generate_content(
         model=selected_model,
         contents=[prompt],
@@ -289,7 +298,11 @@ _GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")  # high-context, fr
 def _call_groq_sync(prompt: str, api_key: str, json_mode: bool) -> str:
     from groq import Groq
 
-    client = Groq(api_key=api_key)
+    # max_retries=0: the Groq SDK retries the SAME key internally by default
+    # (up to 2x) — redundant with, and additive to, our own rotation across
+    # different keys, and neither layer bounded the retried calls without an
+    # explicit timeout, so a bad key could burn several unbounded attempts.
+    client = Groq(api_key=api_key, timeout=LLM_CALL_TIMEOUT_SECONDS, max_retries=0)
     messages = [{"role": "user", "content": prompt}]
     kwargs = {"model": _GROQ_MODEL, "messages": messages, "temperature": 0.0 if json_mode else 0.3}
     if json_mode:

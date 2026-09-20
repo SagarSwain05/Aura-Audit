@@ -56,6 +56,29 @@ export default function AuditPage() {
     fetchAudit()
   }, [id])
 
+  // Auto-poll while processing — covers both a retry and landing on this
+  // page while the original upload is still being analyzed. Previously the
+  // "processing" state just showed a static "this usually takes 30-60s"
+  // message with a manual "Check Status" button and no automatic refresh,
+  // so a completed analysis could sit unseen indefinitely.
+  useEffect(() => {
+    if (audit?.status !== 'processing') return
+    const poll = setInterval(async () => {
+      try {
+        const res = await auditApi.getStatus(id)
+        if (res.data.status === 'completed' || res.data.status === 'failed') {
+          const full = await auditApi.getById(id)
+          setAudit(full.data.audit)
+          setCurrentAudit(full.data.audit)
+          if (res.data.status === 'completed') toast.success('Analysis complete!')
+        }
+      } catch {
+        // transient poll failure — next tick retries, no need to surface an error
+      }
+    }, 3000)
+    return () => clearInterval(poll)
+  }, [audit?.status, id])
+
   const handleGetRoadmap = async (role: string, skills: string[]) => {
     setRoadmapLoading(true)
     try {
@@ -149,11 +172,11 @@ export default function AuditPage() {
           <div className="glass-card p-8 text-center mb-6">
             <Loader2 className="w-10 h-10 animate-spin text-aura-purple mx-auto mb-3" />
             <h3 className="font-bold mb-1">Gemini is analyzing your resume</h3>
-            <p className="text-aura-muted text-sm">This usually takes 30–60 seconds. Please wait...</p>
+            <p className="text-aura-muted text-sm">Usually 30–60 seconds, longer on a cold start. This page updates automatically — no need to refresh.</p>
             <button
               onClick={async () => {
                 const res = await auditApi.getStatus(id)
-                if (res.data.status === 'completed') {
+                if (res.data.status === 'completed' || res.data.status === 'failed') {
                   const full = await auditApi.getById(id)
                   setAudit(full.data.audit)
                   setCurrentAudit(full.data.audit)
@@ -161,7 +184,7 @@ export default function AuditPage() {
               }}
               className="mt-4 btn-secondary text-sm py-2 flex items-center gap-2 mx-auto"
             >
-              <RefreshCw className="w-4 h-4" /> Check Status
+              <RefreshCw className="w-4 h-4" /> Check Now
             </button>
           </div>
         )}

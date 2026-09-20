@@ -90,6 +90,11 @@ const auditSchema = new mongoose.Schema({
   // Status
   status: { type: String, enum: ['processing', 'completed', 'failed'], default: 'processing' },
   errorMessage: String,
+  // When the CURRENT processing attempt began — distinct from createdAt
+  // (fixed at first upload). A retry re-enters 'processing' on an audit
+  // that may be hours old, so the stuck-processing self-heal in
+  // getAuditStatus must measure from here, not from createdAt.
+  processingStartedAt: { type: Date, default: Date.now },
 
   // Privacy
   blindMode: { type: Boolean, default: false },
