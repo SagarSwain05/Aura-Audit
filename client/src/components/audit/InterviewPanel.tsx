@@ -84,12 +84,18 @@ export default function InterviewPanel({
   const [qs, setQs] = useState<InterviewQuestion[]>(questions)
   const [loading, setLoading] = useState(false)
 
-  const regenerate = async () => {
+  // Appends a fresh batch rather than replacing — "generate more" grows the
+  // question pool instead of discarding what's already been reviewed.
+  const generateMore = async () => {
     setLoading(true)
     try {
       const res = await auditApi.generateInterview(auditId, dreamRole)
-      setQs(res.data.questions || [])
-      toast.success('New questions generated!')
+      const fresh: InterviewQuestion[] = res.data.questions || []
+      setQs((prev) => {
+        const seen = new Set(prev.map((q) => q.question))
+        return [...prev, ...fresh.filter((q) => !seen.has(q.question))]
+      })
+      toast.success(qs.length > 0 ? 'More questions added!' : 'Questions generated!')
     } catch {
       toast.error('Failed to generate questions')
     } finally {
@@ -109,14 +115,9 @@ export default function InterviewPanel({
             Questions based on YOUR specific projects — not generic
           </p>
         </div>
-        <button
-          onClick={regenerate}
-          disabled={loading}
-          className="btn-secondary py-2 text-xs flex items-center gap-1.5"
-        >
-          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-          Regenerate
-        </button>
+        {qs.length > 0 && (
+          <span className="text-xs text-aura-muted shrink-0">{qs.length} question{qs.length !== 1 ? 's' : ''}</span>
+        )}
       </div>
 
       {qs.length === 0 ? (
@@ -124,7 +125,7 @@ export default function InterviewPanel({
           <Brain className="w-8 h-8 text-aura-muted mx-auto mb-3" />
           <p className="font-medium mb-1">No questions yet</p>
           <p className="text-aura-muted text-sm mb-4">Generate AI interview questions from your resume.</p>
-          <button onClick={regenerate} disabled={loading} className="btn-primary text-sm py-2">
+          <button onClick={generateMore} disabled={loading} className="btn-primary text-sm py-2">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Generate Questions'}
           </button>
         </div>
@@ -133,6 +134,14 @@ export default function InterviewPanel({
           {qs.map((q, i) => (
             <QuestionCard key={i} q={q} index={i} />
           ))}
+          <button
+            onClick={generateMore}
+            disabled={loading}
+            className="w-full py-2.5 rounded-xl text-sm font-medium border border-aura-border text-aura-muted hover:text-aura-purple-light hover:border-aura-purple/30 transition-all flex items-center justify-center gap-2"
+          >
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Generate More Questions
+          </button>
         </div>
       )}
     </div>

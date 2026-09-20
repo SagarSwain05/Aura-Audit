@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, CheckCircle2, Circle, Youtube, BookOpen, Code2, Play, ExternalLink, Trophy, Calendar, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Circle, Youtube, BookOpen, Code2, Play, ExternalLink, Trophy, Calendar, Lightbulb, ChevronDown, ChevronUp, ListChecks } from 'lucide-react'
 import Link from 'next/link'
 import Image from 'next/image'
 import Navbar from '@/components/Navbar'
@@ -34,7 +34,7 @@ const PLATFORM_CONFIG = {
 }
 
 function ResourceCard({ resource }: { resource: LearningResource }) {
-  const cfg = PLATFORM_CONFIG[resource.platform] || PLATFORM_CONFIG.docs
+  const cfg = PLATFORM_CONFIG[resource.platform as keyof typeof PLATFORM_CONFIG] || PLATFORM_CONFIG.docs
 
   return (
     <a
@@ -61,8 +61,8 @@ function ResourceCard({ resource }: { resource: LearningResource }) {
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-aura-text leading-tight line-clamp-2 mb-1">{resource.title}</p>
         <div className="flex items-center gap-2">
-          <span className={`text-[10px] font-medium ${cfg.color}`}>{resource.platform}</span>
-          <span className="text-[10px] text-aura-muted">· {resource.duration}</span>
+          {resource.platform && <span className={`text-[10px] font-medium ${cfg.color}`}>{resource.platform}</span>}
+          {resource.duration && <span className="text-[10px] text-aura-muted">· {resource.duration}</span>}
         </div>
       </div>
       <ExternalLink className="w-3.5 h-3.5 text-aura-muted shrink-0 group-hover:text-aura-purple transition-colors mt-0.5" />
@@ -109,11 +109,11 @@ function DayCard({ day, isCompleted, onToggle }: { day: RoadmapDay; isCompleted:
             </span>
             <span className="font-semibold text-sm truncate">{day.topic}</span>
           </div>
-          <p className="text-xs text-aura-muted truncate">{day.goal}</p>
+          <p className="text-xs text-aura-muted truncate">{(day.tasks || [])[0]}</p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs text-aura-muted">{day.resources.length} resources</span>
+          <span className="text-xs text-aura-muted">{(day.resources || []).length} resources</span>
           {expanded ? <ChevronUp className="w-4 h-4 text-aura-muted" /> : <ChevronDown className="w-4 h-4 text-aura-muted" />}
         </div>
       </div>
@@ -128,14 +128,23 @@ function DayCard({ day, isCompleted, onToggle }: { day: RoadmapDay; isCompleted:
             className="overflow-hidden"
           >
             <div className="px-4 pb-4 border-t border-aura-border/50 pt-3 space-y-3">
-              {/* Goal */}
-              <div className="flex items-start gap-2 text-sm">
-                <Trophy className="w-4 h-4 text-aura-amber shrink-0 mt-0.5" />
-                <p className="text-aura-muted-light">{day.goal}</p>
-              </div>
+              {/* Tasks */}
+              {(day.tasks || []).length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-aura-amber uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                    <ListChecks className="w-3.5 h-3.5" /> Today's Tasks
+                  </p>
+                  {day.tasks.map((t, i) => (
+                    <div key={i} className="flex items-start gap-2 text-sm">
+                      <Trophy className="w-3.5 h-3.5 text-aura-amber shrink-0 mt-0.5" />
+                      <p className="text-aura-muted-light">{t}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Resources */}
-              {day.resources.length > 0 && (
+              {(day.resources || []).length > 0 && (
                 <div className="space-y-2">
                   {day.resources.map((r, i) => (
                     <ResourceCard key={i} resource={r} />
@@ -167,7 +176,7 @@ export default function RoadmapPage() {
   const router = useRouter()
   const { roadmap, completedDays, toggleDayComplete } = useAuditStore()
 
-  if (!roadmap) {
+  if (!roadmap || !Array.isArray(roadmap.days) || roadmap.days.length === 0) {
     return (
       <div className="min-h-screen bg-aura-bg">
         <Navbar />
@@ -199,7 +208,7 @@ export default function RoadmapPage() {
           </button>
           <div className="flex-1">
             <h1 className="font-bold text-xl">{roadmap.skill} Roadmap</h1>
-            <p className="text-xs text-aura-muted">{totalDays}-day personalized learning plan</p>
+            <p className="text-xs text-aura-muted">{roadmap.goal || `${totalDays}-day personalized learning plan`}</p>
           </div>
         </div>
 

@@ -146,30 +146,38 @@ async def analyze(
     if not audit_result.get("job_matches"):
         audit_result["job_matches"] = await get_top_matches(extracted_skills)
 
-    # gap_analysis and market_demand are independent LLM calls (neither's
-    # input depends on the other's output) — run them concurrently instead
-    # of back-to-back to cut one full LLM round-trip off every upload.
-    gap_task = (
-        analyze_gap(extracted_skills, dream_role, extracted_experience, user_key=user_key)
-        if dream_role else None
+    # gap_analysis, market_demand, and interview_questions are independent
+    # LLM calls (none depends on another's output) — run them concurrently
+    # instead of back-to-back so upload latency is one round-trip, not three.
+    tasks = {}
+    if dream_role:
+        tasks["gap"] = analyze_gap(extracted_skills, dream_role, extracted_experience, user_key=user_key)
+    tasks["market"] = get_market_demand(extracted_skills[:10], user_key=user_key)
+    # Auto-generate interview questions from this resume so the Interview Sim
+    # tab is populated the moment the audit completes — no separate manual
+    # "Generate Questions" click required. Falls back to the target role
+    # implied by the resume when no dream role was set at upload time.
+    tasks["interview"] = generate_interview_questions(
+        resume_text, dream_role or "a role matching their resume and skills",
+        skills=extracted_skills, user_key=user_key,
     )
-    market_task = get_market_demand(extracted_skills[:10], user_key=user_key)
 
-    results = await asyncio.gather(
-        *([gap_task] if gap_task else []), market_task,
-        return_exceptions=True,
-    )
-    market = results[-1]
-    gap = results[0] if gap_task else None
+    values = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    results = dict(zip(tasks.keys(), values))
 
-    audit_result["gap_analysis"] = (None if isinstance(gap, Exception) else gap) if gap_task else None
+    gap = results.get("gap")
+    audit_result["gap_analysis"] = None if (gap is None or isinstance(gap, Exception)) else gap
 
+    market = results["market"]
     if isinstance(market, Exception):
         audit_result["market_demand"] = {}
         audit_result["market_meta"] = {}
     else:
         audit_result["market_demand"] = market.get("demand", {})
         audit_result["market_meta"] = {"trending": market.get("trending_additions", []), "hot_cities": market.get("hot_cities", {})}
+
+    interview = results["interview"]
+    audit_result["interview_questions"] = [] if isinstance(interview, Exception) else interview.get("questions", [])
 
     audit_result["user_id"] = user_id
     audit_result["resume_meta"] = {

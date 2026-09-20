@@ -43,22 +43,23 @@ export interface GapAnalysis {
 export interface LearningResource {
   title: string
   url: string
-  platform: 'youtube' | 'coursera' | 'docs' | 'project'
-  duration: string
+  platform?: 'youtube' | 'coursera' | 'docs' | 'project' | 'mdn' | string
+  duration?: string
   thumbnail?: string
-  type: 'video' | 'course' | 'article' | 'project_idea'
+  type?: 'video' | 'course' | 'article' | 'project_idea' | string
 }
 
 export interface RoadmapDay {
   day: number
   topic: string
-  goal: string
+  tasks: string[]
   resources: LearningResource[]
-  project_idea?: string
+  project_idea?: string | null
 }
 
 export interface LearningRoadmap {
   skill: string
+  goal?: string
   total_days: number
   days: RoadmapDay[]
 }
