@@ -6,21 +6,32 @@ Persists to ./data/chroma_db — no external service needed.
 import os
 import numpy as np
 from typing import Optional
-import chromadb
-from chromadb.config import Settings
 
 _PERSIST_PATH = os.path.join(os.path.dirname(__file__), "../data/chroma_db")
-os.makedirs(_PERSIST_PATH, exist_ok=True)
 
-_client = chromadb.PersistentClient(
-    path=_PERSIST_PATH,
-    settings=Settings(anonymized_telemetry=False),
-)
+# ChromaDB (+ its onnxruntime/duckdb transitive deps) is one of the heaviest
+# imports in this service and PersistentClient() does real disk I/O on
+# construction — doing this at module import time blocks the whole app from
+# binding its port, which delays every cold start (Render free tier) even
+# for requests that never touch job matching. Deferred to first real use.
+_job_collection = None
 
-_job_collection = _client.get_or_create_collection(
-    name="jobs",
-    metadata={"hnsw:space": "cosine"},
-)
+
+def _get_collection():
+    global _job_collection
+    if _job_collection is None:
+        import chromadb
+        from chromadb.config import Settings
+        os.makedirs(_PERSIST_PATH, exist_ok=True)
+        client = chromadb.PersistentClient(
+            path=_PERSIST_PATH,
+            settings=Settings(anonymized_telemetry=False),
+        )
+        _job_collection = client.get_or_create_collection(
+            name="jobs",
+            metadata={"hnsw:space": "cosine"},
+        )
+    return _job_collection
 
 
 def _normalize(vec: np.ndarray) -> list[float]:
@@ -38,15 +49,16 @@ def index_job(job_id: str, embedding: np.ndarray, metadata: dict) -> None:
         for k, v in metadata.items()
         if v is not None
     }
-    existing = _job_collection.get(ids=[job_id])
+    collection = _get_collection()
+    existing = collection.get(ids=[job_id])
     if existing["ids"]:
-        _job_collection.update(
+        collection.update(
             ids=[job_id],
             embeddings=[_normalize(embedding)],
             metadatas=[safe_meta],
         )
     else:
-        _job_collection.add(
+        collection.add(
             ids=[job_id],
             embeddings=[_normalize(embedding)],
             metadatas=[safe_meta],
@@ -62,16 +74,17 @@ def search_jobs(
     Cosine similarity search. Returns list of
     {id, metadata, similarity_score (0–100)}.
     """
+    collection = _get_collection()
     kwargs = dict(
         query_embeddings=[_normalize(query_embedding)],
-        n_results=min(top_k, max(1, _job_collection.count())),
+        n_results=min(top_k, max(1, collection.count())),
         include=["metadatas", "distances"],
     )
     if where:
         kwargs["where"] = where
 
     try:
-        results = _job_collection.query(**kwargs)
+        results = collection.query(**kwargs)
     except Exception:
         return []
 
@@ -89,11 +102,11 @@ def search_jobs(
 
 
 def delete_job(job_id: str) -> None:
-    _job_collection.delete(ids=[job_id])
+    _get_collection().delete(ids=[job_id])
 
 
 def collection_count() -> int:
-    return _job_collection.count()
+    return _get_collection().count()
 
 
 def get_stats() -> dict:

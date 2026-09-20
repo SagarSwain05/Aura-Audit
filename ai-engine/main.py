@@ -7,6 +7,7 @@ import os
 import re
 import json
 import base64
+import asyncio
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Header
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
@@ -145,21 +146,30 @@ async def analyze(
     if not audit_result.get("job_matches"):
         audit_result["job_matches"] = await get_top_matches(extracted_skills)
 
-    if dream_role:
-        try:
-            audit_result["gap_analysis"] = await analyze_gap(extracted_skills, dream_role, extracted_experience, user_key=user_key)
-        except Exception:
-            audit_result["gap_analysis"] = None
-    else:
-        audit_result["gap_analysis"] = None
+    # gap_analysis and market_demand are independent LLM calls (neither's
+    # input depends on the other's output) — run them concurrently instead
+    # of back-to-back to cut one full LLM round-trip off every upload.
+    gap_task = (
+        analyze_gap(extracted_skills, dream_role, extracted_experience, user_key=user_key)
+        if dream_role else None
+    )
+    market_task = get_market_demand(extracted_skills[:10], user_key=user_key)
 
-    try:
-        market = await get_market_demand(extracted_skills[:10], user_key=user_key)
-        audit_result["market_demand"] = market.get("demand", {})
-        audit_result["market_meta"] = {"trending": market.get("trending_additions", []), "hot_cities": market.get("hot_cities", {})}
-    except Exception:
+    results = await asyncio.gather(
+        *([gap_task] if gap_task else []), market_task,
+        return_exceptions=True,
+    )
+    market = results[-1]
+    gap = results[0] if gap_task else None
+
+    audit_result["gap_analysis"] = (None if isinstance(gap, Exception) else gap) if gap_task else None
+
+    if isinstance(market, Exception):
         audit_result["market_demand"] = {}
         audit_result["market_meta"] = {}
+    else:
+        audit_result["market_demand"] = market.get("demand", {})
+        audit_result["market_meta"] = {"trending": market.get("trending_additions", []), "hot_cities": market.get("hot_cities", {})}
 
     audit_result["user_id"] = user_id
     audit_result["resume_meta"] = {

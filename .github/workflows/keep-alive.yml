@@ -1,0 +1,24 @@
+name: Keep Render services warm
+
+# Render's free plan spins down a service after 15 minutes of no traffic;
+# the next request then pays a full cold boot (worst for the AI engine,
+# which has the heaviest dependency footprint). Pinging /health well inside
+# that 15-minute window keeps both services classified as active so real
+# user requests never hit a cold start.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      # --retry survives a slow cold boot without flagging it as a failure;
+      # this only fails (and emails the repo owner) if the service is
+      # genuinely down for the full retry window, which doubles as free
+      # uptime monitoring for the outage pattern this project has hit before.
+      - name: Ping backend
+        run: curl -sf --max-time 30 --retry 3 --retry-delay 15 --retry-connrefused https://aura-audit-server.onrender.com/health
+      - name: Ping AI engine
+        run: curl -sf --max-time 30 --retry 3 --retry-delay 15 --retry-connrefused https://aura-audit-ai.onrender.com/health

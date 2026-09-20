@@ -1,20 +1,11 @@
 """
-Career Matcher — semantic job matching using Pinecone vector search.
-Falls back to keyword-based matching if Pinecone is unavailable.
+Career Matcher — keyword-based job matching against a curated profile list.
 """
 
 import os
 import json
 import asyncio
 from typing import Optional
-# Pinecone is optional — graceful degradation
-try:
-    from pinecone import Pinecone
-    _pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY", ""))
-    _index = _pc.Index(os.getenv("PINECONE_INDEX", "aura-audit-jobs"))
-    PINECONE_AVAILABLE = True
-except Exception:
-    PINECONE_AVAILABLE = False
 
 # Curated job profiles with required skills (used as fallback + scoring baseline)
 JOB_PROFILES = {
