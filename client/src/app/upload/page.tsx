@@ -63,16 +63,20 @@ export default function UploadPage() {
       const { auditId } = res.data
       setIsAnalyzing(true)
 
-      // Poll for completion
+      // Poll for completion. 110 attempts * 2s = 220s — comfortably above the
+      // 180s timeout the backend allows for the AI engine call, so this page
+      // doesn't give up while a real analysis is still legitimately in
+      // flight. (Real durations observed in production: 32-144s normally,
+      // so 220s leaves real margin, not just matching the ceiling exactly.)
       let attempts = 0
-      const maxAttempts = 60
+      const maxAttempts = 110
       const poll = setInterval(async () => {
         attempts++
         try {
           const statusRes = await auditApi.getStatus(auditId)
           const { status } = statusRes.data
 
-          setProgress(60 + Math.min(attempts * 0.5, 35))
+          setProgress(60 + Math.min(attempts * (35 / maxAttempts), 35))
 
           if (status === 'completed') {
             clearInterval(poll)
@@ -85,13 +89,15 @@ export default function UploadPage() {
             setIsAnalyzing(false)
             toast.error('Analysis failed. Please try again.')
             setUploading(false)
-          }
-
-          if (attempts >= maxAttempts) {
+          } else if (attempts >= maxAttempts) {
+            // Don't strand the user here — the audit is very likely still
+            // genuinely processing (this only fires past 220s). Hand off to
+            // the audit page, which polls on its own and will show the real
+            // result the moment it lands instead of a dead-end timeout error.
             clearInterval(poll)
             setIsAnalyzing(false)
-            toast.error('Analysis timed out. Please try again.')
-            setUploading(false)
+            toast('Still analyzing — taking you to the results page, which will update automatically.', { icon: '⏳' })
+            router.push(`/audit/${auditId}`)
           }
         } catch {
           clearInterval(poll)

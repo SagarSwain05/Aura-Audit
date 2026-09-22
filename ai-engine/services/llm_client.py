@@ -64,6 +64,16 @@ CIRCUIT_OPEN_SECONDS = float(os.getenv("CIRCUIT_OPEN_SECONDS", "20"))
 # tries most of each pool before actually failing over.
 GEMINI_MAX_RETRIES_DEFAULT = int(os.getenv("GEMINI_MAX_RETRIES", "6"))
 GROQ_MAX_RETRIES_DEFAULT = int(os.getenv("GROQ_MAX_RETRIES", "6"))
+# Distinct from the retry-depth note above: this doesn't shorten the pool for
+# ordinary per-key errors (a single blip still gets the full 6-key rotation),
+# it only cuts a request short once "high demand" 503s repeat across
+# consecutive DIFFERENT keys — a signal the model itself is over capacity,
+# which no amount of key rotation fixes. Observed live during a real Gemini
+# capacity event: every one of 6 keys failed the same way, one after another,
+# burning ~25-30s per category before Groq (which worked immediately) ever
+# got a turn — across 4 categories per audit, that alone explained most of a
+# 120s+ wait.
+GEMINI_OVERLOAD_BAILOUT = int(os.getenv("GEMINI_OVERLOAD_BAILOUT", "2"))
 # Neither SDK bounded an individual call by default, so one stalled key
 # (a common Render free-tier network hiccup) could hang far longer than the
 # "30-60 seconds" a user is told to expect — with up to 6 keys tried per
@@ -269,6 +279,7 @@ async def _try_gemini(
         if k not in attempt_keys
     ]
 
+    consecutive_overload = 0
     for i, key in enumerate(attempt_keys):
         try:
             text = await asyncio.to_thread(_call_gemini_sync, prompt, key, json_mode)
@@ -277,11 +288,29 @@ async def _try_gemini(
         except Exception as e:
             err = str(e)
             is_rate = "429" in err or "RESOURCE_EXHAUSTED" in err
+            is_overloaded = "503" in err or "UNAVAILABLE" in err
             if is_rate:
                 _mark_cooldown("gemini", key)
                 print(f"⚠️  Gemini key #{i + 1} ({category}) rate-limited, cooling down {KEY_COOLDOWN_SECONDS:.0f}s…")
+                consecutive_overload = 0
+            elif is_overloaded:
+                consecutive_overload += 1
+                print(f"⚠️  Gemini key #{i + 1} ({category}) overloaded (model-wide high demand): {err[:100]}")
             else:
                 print(f"⚠️  Gemini key #{i + 1} ({category}) error: {err[:120]}")
+                consecutive_overload = 0
+
+            # A "high demand" 503 means the MODEL is over capacity, not this
+            # key — rotating to another key doesn't fix it, it just repeats
+            # the same failure. Observed live: every key in the pool failing
+            # this way, one after another, burning ~25-30s per category
+            # before ever reaching Groq (which then works immediately).
+            # Bail out to Groq after a couple of confirming failures instead
+            # of exhausting the whole pool on a provider-wide outage.
+            if is_overloaded and consecutive_overload >= GEMINI_OVERLOAD_BAILOUT:
+                print(f"⚠️  Gemini reporting high demand across {consecutive_overload} keys ({category}) — bailing to Groq early.")
+                break
+
             # Short pause before the next (different) key — no need to wait
             # out THIS key's limit, we're not retrying it again this call.
             if i < len(attempt_keys) - 1:
