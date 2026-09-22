@@ -7,7 +7,8 @@ import { companyApi, jobsApi } from '@/lib/api'
 import Link from 'next/link'
 
 interface Dashboard {
-  company: { name: string; isVerified: boolean; plan: string; stats: { totalHired: number; activeJobs: number; totalApplications: number } }
+  company: { name: string; isVerified: boolean; plan: string }
+  stats: { activeJobs: number; totalApplications: number; totalHired: number }
   recentApplications: { _id: string; student: { name: string }; job: { title: string }; status: string; createdAt: string }[]
 }
 
@@ -35,10 +36,11 @@ export default function CompanyHome() {
   )
 
   const company = data?.company
+  const liveStats = data?.stats
   const stats = [
-    { label: 'Active Jobs', value: company?.stats?.activeJobs || 0, icon: Briefcase, color: 'text-aura-purple-light', bg: 'bg-aura-purple/10' },
-    { label: 'Total Applications', value: company?.stats?.totalApplications || 0, icon: Users, color: 'text-cyan-400', bg: 'bg-cyan-400/10' },
-    { label: 'Total Hired', value: company?.stats?.totalHired || 0, icon: UserCheck, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
+    { label: 'Active Jobs', value: liveStats?.activeJobs || 0, icon: Briefcase, color: 'text-aura-purple-light', bg: 'bg-aura-purple/10' },
+    { label: 'Total Applications', value: liveStats?.totalApplications || 0, icon: Users, color: 'text-cyan-400', bg: 'bg-cyan-400/10' },
+    { label: 'Total Hired', value: liveStats?.totalHired || 0, icon: UserCheck, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
     { label: 'Plan', value: company?.plan?.toUpperCase() || 'FREE', icon: TrendingUp, color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
   ]
 

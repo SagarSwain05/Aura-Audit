@@ -8,6 +8,7 @@ router.get('/profile', c.getProfile);
 router.put('/profile', c.updateProfile);
 router.get('/candidates', c.searchCandidates);
 router.post('/candidates/match', c.matchCandidates);
+router.post('/candidates/source', c.sourceCandidate);
 router.post('/kyc', c.uploadKYC);
 
 module.exports = router;

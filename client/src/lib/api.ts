@@ -109,6 +109,7 @@ export const jobsApi = {
     api.get('/api/jobs/student/live', { params }),
   getRoleCatalog: () => api.get('/api/jobs/catalog/roles'),
   getLocationCatalog: () => api.get('/api/jobs/catalog/locations'),
+  getSkillCatalog: () => api.get('/api/jobs/catalog/skills'),
 }
 
 // ── Alumni ─────────────────────────────────────────────
@@ -145,7 +146,10 @@ export const companyApi = {
   getProfile: () => api.get('/api/company/profile'),
   updateProfile: (data: Record<string, unknown>) => api.put('/api/company/profile', data),
   searchCandidates: (params: Record<string, string>) => api.get('/api/company/candidates', { params }),
-  matchCandidates: (jobId: string) => api.post('/api/company/candidates/match', { jobId }),
+  matchCandidates: (jobId: string, opts?: { minScore?: number; limit?: number }) =>
+    api.post('/api/company/candidates/match', { jobId, ...opts }),
+  sourceCandidate: (jobId: string, studentId: string) =>
+    api.post('/api/company/candidates/source', { jobId, studentId }),
   uploadKYC: (formData: FormData) =>
     api.post('/api/company/kyc', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
 }

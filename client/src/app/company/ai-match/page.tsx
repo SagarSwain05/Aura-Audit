@@ -14,7 +14,19 @@ interface Match {
   skills: { name: string; level: string }[]
   cgpa?: number
   matchScore?: number
+  matchedSkills?: string[]
+  missingSkills?: string[]
   department?: string
+  dreamRole?: string
+  isPlaced?: boolean
+  readiness?: 'excellent' | 'good' | 'fair' | 'needs_growth'
+}
+
+const READINESS_CONFIG: Record<string, { label: string; color: string }> = {
+  excellent: { label: 'Excellent readiness', color: 'text-emerald-400 bg-emerald-400/10' },
+  good: { label: 'Good readiness', color: 'text-cyan-400 bg-cyan-400/10' },
+  fair: { label: 'Fair readiness', color: 'text-yellow-400 bg-yellow-400/10' },
+  needs_growth: { label: 'Needs growth', color: 'text-red-400 bg-red-400/10' },
 }
 
 export default function AIMatchPage() {
@@ -35,7 +47,7 @@ export default function AIMatchPage() {
     setLoading(true)
     try {
       const r = await companyApi.matchCandidates(selectedJob)
-      setMatches(r.data.candidates || r.data.matches || [])
+      setMatches(r.data.matches || [])
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } }
       toast.error(e.response?.data?.message || 'Failed to match')
@@ -103,8 +115,13 @@ export default function AIMatchPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div>
-                      <h3 className="font-semibold">{m.name}</h3>
-                      {m.department && <p className="text-xs text-aura-muted">{m.department}</p>}
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold">{m.name}</h3>
+                        {m.isPlaced && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-400/10 text-emerald-400">Placed</span>}
+                      </div>
+                      <p className="text-xs text-aura-muted">
+                        {m.department}{m.department && m.dreamRole ? ' · ' : ''}{m.dreamRole}
+                      </p>
                     </div>
                     <div className="flex items-center gap-3">
                       {m.cgpa != null && (
@@ -123,11 +140,35 @@ export default function AIMatchPage() {
                       )}
                     </div>
                   </div>
+                  {m.readiness && (
+                    <span className={`inline-block mt-1.5 text-[10px] px-2 py-0.5 rounded-full font-medium ${READINESS_CONFIG[m.readiness]?.color}`}>
+                      {READINESS_CONFIG[m.readiness]?.label}
+                      {m.careerReadinessScore != null && ` — ${m.careerReadinessScore}% career ready`}
+                    </span>
+                  )}
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {m.skills.slice(0, 6).map((sk) => (
-                      <span key={sk.name} className={`px-2 py-0.5 text-xs rounded-lg ${LEVEL_COLORS[sk.level] || ''}`}>{sk.name}</span>
+                      <span
+                        key={sk.name}
+                        className={`px-2 py-0.5 text-xs rounded-lg ${
+                          m.matchedSkills?.some((ms) => ms.toLowerCase() === sk.name.toLowerCase())
+                            ? 'bg-emerald-400/10 text-emerald-400'
+                            : LEVEL_COLORS[sk.level] || ''
+                        }`}
+                      >
+                        {sk.name}
+                      </span>
                     ))}
                   </div>
+                  {m.missingSkills && m.missingSkills.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {m.missingSkills.slice(0, 4).map((s) => (
+                        <span key={s} className="px-2 py-0.5 text-xs rounded-lg bg-red-400/5 text-red-400/70 border border-red-400/10">
+                          missing: {s}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </motion.div>
             ))}

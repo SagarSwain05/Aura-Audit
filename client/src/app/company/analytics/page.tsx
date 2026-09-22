@@ -11,7 +11,7 @@ const COLORS = ['#7C3AED', '#06B6D4', '#10b981', '#f59e0b', '#ef4444']
 
 export default function CompanyAnalyticsPage() {
   const [dashboard, setDashboard] = useState<{
-    company: { stats: { totalHired: number; activeJobs: number; totalApplications: number } }
+    stats: { totalHired: number; activeJobs: number; totalApplications: number }
     applicationsByStatus: Record<string, number>
     monthlyApplications: { month: string; count: number }[]
   } | null>(null)
@@ -27,7 +27,7 @@ export default function CompanyAnalyticsPage() {
     </div>
   )
 
-  const stats = dashboard?.company?.stats
+  const stats = dashboard?.stats
   const statusData = Object.entries(dashboard?.applicationsByStatus || {}).map(([name, value]) => ({ name: name.replace('_', ' '), value }))
   const monthlyData = dashboard?.monthlyApplications || []
 

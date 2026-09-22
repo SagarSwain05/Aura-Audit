@@ -1,14 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Briefcase, Plus, Edit2, Trash2, Eye, Loader2, Users, X } from 'lucide-react'
+import { Briefcase, Plus, Edit2, Trash2, Eye, Loader2, Users, X, MapPin } from 'lucide-react'
 import { jobsApi } from '@/lib/api'
+import { CatalogPicker, MultiCatalogPicker } from '@/components/CatalogPicker'
 import toast from 'react-hot-toast'
+
+type Catalog = Record<string, string[]>
 
 interface Job {
   _id: string
   title: string
+  description?: string
+  location?: string
   skills: string[]
   minCGPA?: number
   status: 'active' | 'draft' | 'closed'
@@ -17,7 +22,7 @@ interface Job {
 }
 
 interface JobForm {
-  title: string; description: string; location: string; skills: string
+  title: string; description: string; location: string; skills: string[]
   minCGPA: string; isDrive: boolean; status: 'active' | 'draft'
 }
 
@@ -33,10 +38,19 @@ export default function CompanyJobsPage() {
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState<JobForm>({ title: '', description: '', location: '', skills: '', minCGPA: '', isDrive: false, status: 'active' })
+  const [form, setForm] = useState<JobForm>({ title: '', description: '', location: '', skills: [], minCGPA: '', isDrive: false, status: 'active' })
+  const [locationCatalog, setLocationCatalog] = useState<Catalog>({})
+  const [skillCatalog, setSkillCatalog] = useState<Catalog>({})
+
+  const flatLocations = useMemo(() => Object.values(locationCatalog).flat(), [locationCatalog])
+  const flatSkills = useMemo(() => Object.values(skillCatalog).flat(), [skillCatalog])
 
   const load = () => jobsApi.getJobs().then((r) => setJobs(r.data.jobs || [])).finally(() => setLoading(false))
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    jobsApi.getLocationCatalog().then((r) => setLocationCatalog(r.data.catalog || {})).catch(() => {})
+    jobsApi.getSkillCatalog().then((r) => setSkillCatalog(r.data.catalog || {})).catch(() => {})
+  }, [])
 
   const handleSave = async () => {
     if (!form.title) return toast.error('Job title is required')
@@ -46,7 +60,7 @@ export default function CompanyJobsPage() {
         title: form.title,
         description: form.description,
         location: form.location,
-        skills: form.skills.split(',').map((s) => s.trim()).filter(Boolean),
+        skills: form.skills,
         minCGPA: parseFloat(form.minCGPA) || 0,
         isDrive: form.isDrive,
         status: form.status,
@@ -78,7 +92,7 @@ export default function CompanyJobsPage() {
 
   const openCreate = () => {
     setEditId(null)
-    setForm({ title: '', description: '', location: '', skills: '', minCGPA: '', isDrive: false, status: 'active' })
+    setForm({ title: '', description: '', location: '', skills: [], minCGPA: '', isDrive: false, status: 'active' })
     setShowModal(true)
   }
 
@@ -121,7 +135,7 @@ export default function CompanyJobsPage() {
                 <button
                   onClick={() => {
                     setEditId(job._id)
-                    setForm({ title: job.title, description: '', location: '', skills: job.skills.join(', '), minCGPA: String(job.minCGPA || ''), isDrive: !!job.isDrive, status: job.status === 'closed' ? 'draft' : job.status })
+                    setForm({ title: job.title, description: job.description || '', location: job.location || '', skills: job.skills, minCGPA: String(job.minCGPA || ''), isDrive: !!job.isDrive, status: job.status === 'closed' ? 'draft' : job.status })
                     setShowModal(true)
                   }}
                   className="w-8 h-8 rounded-xl hover:bg-white/5 flex items-center justify-center text-aura-muted hover:text-aura-text transition-colors"
@@ -147,8 +161,6 @@ export default function CompanyJobsPage() {
             <div className="space-y-4">
               {[['title', 'Job Title *', 'text', 'e.g. Frontend Engineer'],
                 ['description', 'Description', 'text', 'Brief job description...'],
-                ['location', 'Location', 'text', 'e.g. Bangalore / Remote'],
-                ['skills', 'Required Skills', 'text', 'React, TypeScript, Node.js'],
                 ['minCGPA', 'Min CGPA', 'number', '7.0'],
               ].map(([field, label, type, placeholder]) => (
                 <div key={field}>
@@ -160,6 +172,25 @@ export default function CompanyJobsPage() {
                   )}
                 </div>
               ))}
+              <div>
+                <label className="text-sm text-aura-muted-light mb-1.5 block">Location</label>
+                <CatalogPicker
+                  value={form.location}
+                  onChange={(v) => setForm({ ...form, location: v })}
+                  options={flatLocations}
+                  icon={MapPin}
+                  placeholder="Search location — e.g. Bangalore, Remote..."
+                />
+              </div>
+              <div>
+                <label className="text-sm text-aura-muted-light mb-1.5 block">Required Skills</label>
+                <MultiCatalogPicker
+                  value={form.skills}
+                  onChange={(v) => setForm({ ...form, skills: v })}
+                  options={flatSkills}
+                  placeholder="Search and add skills — e.g. React, Python..."
+                />
+              </div>
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={form.isDrive} onChange={(e) => setForm({ ...form, isDrive: e.target.checked })} className="w-4 h-4 rounded" />

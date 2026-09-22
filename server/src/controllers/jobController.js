@@ -7,6 +7,7 @@ const Notification = require('../models/Notification');
 const { makeFallbackLiveJobs } = require('../utils/aiFallbacks');
 const { JOB_ROLE_CATALOG } = require('../data/jobRoleCatalog');
 const { LOCATION_CATALOG } = require('../data/locationCatalog');
+const { CATALOG: SKILL_CATALOG } = require('../data/skillCatalog');
 
 // GET /api/jobs/catalog/roles
 exports.getJobRoleCatalog = async (req, res) => {
@@ -16,6 +17,14 @@ exports.getJobRoleCatalog = async (req, res) => {
 // GET /api/jobs/catalog/locations
 exports.getLocationCatalog = async (req, res) => {
   res.json({ catalog: LOCATION_CATALOG });
+};
+
+// GET /api/jobs/catalog/skills — same canonical skill catalog students pick
+// from when adding skills to their profile (server/src/data/skillCatalog.js),
+// exposed here too since that route is student-role-locked and companies
+// need it for the "Required Skills" picker on job postings.
+exports.getSkillCatalog = async (req, res) => {
+  res.json({ catalog: SKILL_CATALOG });
 };
 
 const AI = process.env.AI_ENGINE_URL || 'http://localhost:8000';

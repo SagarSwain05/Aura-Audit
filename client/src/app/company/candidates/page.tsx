@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Search, Users, Filter, Star, MapPin, GraduationCap, ExternalLink, Loader2 } from 'lucide-react'
 import { companyApi } from '@/lib/api'
@@ -27,29 +27,44 @@ const LEVEL_COLORS: Record<string, string> = {
 
 export default function CandidatesPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
+  // UI field names kept close to what a recruiter reads, but mapped to the
+  // backend's actual query param names below — they'd silently drifted
+  // apart (skill→skills, minCGPA→minCgpa, maxResults→limit), so every
+  // filter except department was being dropped on every search.
   const [filters, setFilters] = useState({ skill: '', minCGPA: '', department: '', maxResults: '20' })
 
   const handleSearch = async () => {
     setLoading(true)
     setSearched(true)
     try {
-      const params = Object.fromEntries(Object.entries(filters).filter(([, v]) => v))
+      const params: Record<string, string> = {}
+      if (filters.skill) params.skills = filters.skill
+      if (filters.minCGPA) params.minCgpa = filters.minCGPA
+      if (filters.department) params.department = filters.department
+      params.limit = filters.maxResults || '20'
       const r = await companyApi.searchCandidates(params)
       setCandidates(r.data.candidates || [])
+      setTotal(r.data.total || 0)
     } catch {
       setCandidates([])
+      setTotal(0)
     } finally {
       setLoading(false)
     }
   }
 
+  // Load the full portal-wide candidate pool immediately — searching
+  // shouldn't require the recruiter to first guess a filter value.
+  useEffect(() => { handleSearch() }, []) // eslint-disable-line
+
   return (
     <div className="p-6 space-y-6 max-w-5xl">
       <div>
         <h1 className="text-2xl font-bold">Candidate Search</h1>
-        <p className="text-aura-muted text-sm mt-1">Search students by skills, CGPA, and department</p>
+        <p className="text-aura-muted text-sm mt-1">Search every student on the portal by skills, CGPA, and department</p>
       </div>
 
       {/* Search panel */}
@@ -70,7 +85,7 @@ export default function CandidatesPage() {
           <div>
             <label className="text-xs text-aura-muted mb-1.5 block">Max Results</label>
             <select value={filters.maxResults} onChange={(e) => setFilters({ ...filters, maxResults: e.target.value })} className="input-field text-sm">
-              {['10', '20', '50'].map((v) => <option key={v} value={v}>{v}</option>)}
+              {['10', '20', '50', '100'].map((v) => <option key={v} value={v}>{v}</option>)}
             </select>
           </div>
         </div>
@@ -92,7 +107,9 @@ export default function CandidatesPage() {
         </div>
       ) : candidates.length > 0 ? (
         <>
-          <p className="text-sm text-aura-muted">{candidates.length} candidates found</p>
+          <p className="text-sm text-aura-muted">
+            Showing {candidates.length} of {total} candidate{total !== 1 ? 's' : ''} on the portal
+          </p>
           <div className="space-y-3">
             {candidates.map((c, i) => (
               <motion.div

@@ -8,6 +8,7 @@ router.get('/student/applications', protect, requireRole('student'), c.getMyAppl
 router.get('/student/live', protect, requireRole('student'), c.getLiveJobs);
 router.get('/catalog/roles', c.getJobRoleCatalog);
 router.get('/catalog/locations', c.getLocationCatalog);
+router.get('/catalog/skills', c.getSkillCatalog);
 
 // Public
 router.get('/', c.getJobs);
