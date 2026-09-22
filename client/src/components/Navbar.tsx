@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Menu, X, BookOpen, LogOut, Sun, Moon } from 'lucide-react'
 import { useAuditStore } from '@/store/useAuditStore'
 import { useTheme } from '@/components/ThemeProvider'
+import SystemStatusIndicator from '@/components/SystemStatusIndicator'
 import Cookies from 'js-cookie'
 
 const NAV_LINKS = [
@@ -69,8 +70,10 @@ export default function Navbar() {
           ))}
         </div>
 
-        {/* Desktop right: theme toggle + auth */}
+        {/* Desktop right: status + theme toggle + auth */}
         <div className="hidden md:flex items-center gap-3">
+          <SystemStatusIndicator />
+
           {/* Theme toggle */}
           <button
             onClick={toggleTheme}
@@ -132,6 +135,7 @@ export default function Navbar() {
             style={{ backgroundColor: 'rgb(var(--c-surf))' }}
           >
             <div className="px-4 py-4 space-y-3">
+              <SystemStatusIndicator />
               {NAV_LINKS.map((link) => (
                 <Link
                   key={link.href}

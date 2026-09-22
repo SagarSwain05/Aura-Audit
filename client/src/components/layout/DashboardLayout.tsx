@@ -15,6 +15,7 @@ import { useAuditStore } from '@/store/useAuditStore'
 import { notificationsApi } from '@/lib/api'
 import { io as socketIO } from 'socket.io-client'
 import { useTheme } from '@/components/ThemeProvider'
+import SystemStatusIndicator from '@/components/SystemStatusIndicator'
 
 type NavItem = { href: string; label: string; icon: React.ElementType; badge?: number }
 
@@ -372,6 +373,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {navItems.find((n) => pathname === n.href || pathname.startsWith(n.href + '/'))?.label || 'Dashboard'}
             </p>
           </div>
+
+          <SystemStatusIndicator />
 
           {/* Homepage */}
           <Link

@@ -178,6 +178,13 @@ export const universityApi = {
   deleteNotice: (id: string) => api.delete(`/api/university/notices/${id}`),
 }
 
+// ── System status ────────────────────────────────────────
+export const statusApi = {
+  // wake=true uses a long server-side timeout so it can wait out a real
+  // cold boot instead of giving up after a few seconds.
+  get: (wake?: boolean) => api.get('/api/status', { params: wake ? { wake: 'true' } : {} }),
+}
+
 // ── Notifications ──────────────────────────────────────
 export const notificationsApi = {
   getAll: () => api.get('/api/notifications'),

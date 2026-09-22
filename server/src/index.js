@@ -86,14 +86,49 @@ app.use('/api/universities', universitiesRoutes);
 // engine starts its ~30-60s cold boot WHILE the user is still navigating
 // the dashboard, rather than only starting when they actually submit an AI
 // request. Always responds immediately regardless of the AI engine's state
-// — this is a nudge, not a health check (use GET /health on the AI engine
-// directly for that).
+// — this is a nudge, not a health check (use GET /api/status for that).
 app.post('/api/wake-ai', (req, res) => {
   if (process.env.AI_ENGINE_URL) {
     const aiUrl = process.env.AI_ENGINE_URL.replace(/\/+$/, '');
     axios.get(`${aiUrl}/health`, { timeout: 20000 }).catch(() => {});
   }
   res.json({ ok: true });
+});
+
+// GET /api/status — public system status for the live indicator in the UI.
+// Previously the only "is the AI engine up" signal was the silent wake nudge
+// above, which the frontend never read the result of — a user had no way to
+// know the AI engine was cold/down until an actual AI request came back as a
+// placeholder/fallback result. Default (no ?wake) uses a short timeout so
+// the polling badge doesn't hang; ?wake=true uses a long timeout so an
+// explicit "Start AI Engine" click can wait out a real cold boot and report
+// a definitive result instead of guessing.
+app.get('/api/status', async (req, res) => {
+  const wake = req.query.wake === 'true';
+  const started = Date.now();
+  const result = { server: { status: 'online' }, checkedAt: new Date().toISOString() };
+
+  if (!process.env.AI_ENGINE_URL) {
+    result.aiEngine = { status: 'unconfigured' };
+    return res.json(result);
+  }
+
+  const aiUrl = process.env.AI_ENGINE_URL.replace(/\/+$/, '');
+  try {
+    const r = await axios.get(`${aiUrl}/health`, { timeout: wake ? 90000 : 6000 });
+    result.aiEngine = {
+      status: 'online',
+      latencyMs: Date.now() - started,
+      providers: r.data?.providers || null,
+    };
+  } catch (err) {
+    result.aiEngine = {
+      status: 'offline',
+      latencyMs: Date.now() - started,
+      message: err.code === 'ECONNABORTED' ? 'Timed out waiting for a response' : (err.message || 'Unreachable'),
+    };
+  }
+  res.json(result);
 });
 
 // ── Error Handler ──────────────────────────────────────
