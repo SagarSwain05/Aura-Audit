@@ -99,10 +99,18 @@ app.post('/api/wake-ai', (req, res) => {
 // Previously the only "is the AI engine up" signal was the silent wake nudge
 // above, which the frontend never read the result of — a user had no way to
 // know the AI engine was cold/down until an actual AI request came back as a
-// placeholder/fallback result. Default (no ?wake) uses a short timeout so
-// the polling badge doesn't hang; ?wake=true uses a long timeout so an
-// explicit "Start AI Engine" click can wait out a real cold boot and report
-// a definitive result instead of guessing.
+// placeholder/fallback result.
+//
+// Default (no ?wake) hits the AI engine's /health with a short timeout — a
+// cheap "is the process up" check, fine for the automatic 45s background
+// poll (using /ready here instead would fire a real LLM call every 45s for
+// every visitor with the tab open, burning quota for no reason).
+// ?wake=true hits /ready instead, with a long timeout, so an explicit
+// "Start AI Engine" / "Re-check now" click gets the stronger guarantee it's
+// actually asking for: /health only proves the process is reachable, not
+// that a real AI request would succeed (e.g. it stays "ok" even if every
+// LLM provider key is failing) — /ready makes one real generate call and
+// reports whether that actually worked.
 app.get('/api/status', async (req, res) => {
   const wake = req.query.wake === 'true';
   const started = Date.now();
@@ -115,11 +123,13 @@ app.get('/api/status', async (req, res) => {
 
   const aiUrl = process.env.AI_ENGINE_URL.replace(/\/+$/, '');
   try {
-    const r = await axios.get(`${aiUrl}/health`, { timeout: wake ? 90000 : 6000 });
+    const r = await axios.get(`${aiUrl}${wake ? '/ready' : '/health'}`, { timeout: wake ? 90000 : 6000 });
+    const isReady = wake ? r.data?.status === 'ready' : true;
     result.aiEngine = {
-      status: 'online',
+      status: isReady ? 'online' : 'offline',
       latencyMs: Date.now() - started,
       providers: r.data?.providers || null,
+      ...(wake ? { llmCallOk: r.data?.llm_call_ok, llmCallError: r.data?.llm_call_error || null } : {}),
     };
   } catch (err) {
     result.aiEngine = {

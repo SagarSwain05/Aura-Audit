@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Menu, X, BookOpen, LogOut, Sun, Moon } from 'lucide-react'
@@ -10,15 +9,9 @@ import { useTheme } from '@/components/ThemeProvider'
 import SystemStatusIndicator from '@/components/SystemStatusIndicator'
 import Cookies from 'js-cookie'
 
-const NAV_LINKS = [
-  { href: '/upload', label: 'Audit Resume' },
-  { href: '/dashboard', label: 'Dashboard' },
-]
-
 export default function Navbar() {
   const [open, setOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
-  const pathname = usePathname()
   const { user, logout } = useAuditStore()
   const { theme, toggleTheme } = useTheme()
 
@@ -52,23 +45,6 @@ export default function Navbar() {
             Aura<span className="gradient-text">-Audit</span>
           </span>
         </Link>
-
-        {/* Desktop nav */}
-        <div className="hidden md:flex items-center gap-6">
-          {NAV_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`text-sm font-medium transition-colors ${
-                pathname === link.href
-                  ? 'text-aura-purple-light'
-                  : 'text-aura-muted-light hover:text-aura-text'
-              }`}
-            >
-              {link.label}
-            </Link>
-          ))}
-        </div>
 
         {/* Desktop right: status + theme toggle + auth */}
         <div className="hidden md:flex items-center gap-3">
@@ -136,16 +112,6 @@ export default function Navbar() {
           >
             <div className="px-4 py-4 space-y-3">
               <SystemStatusIndicator />
-              {NAV_LINKS.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setOpen(false)}
-                  className="block text-aura-muted-light hover:text-aura-text py-2"
-                >
-                  {link.label}
-                </Link>
-              ))}
               {user ? (
                 <button onClick={handleLogout} className="text-aura-red text-sm py-2">
                   Log Out

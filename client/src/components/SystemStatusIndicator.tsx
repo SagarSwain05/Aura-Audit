@@ -19,7 +19,7 @@ const DOT_CONFIG = {
 // right now, plus a way to explicitly wake it up rather than discovering
 // it was asleep only after an AI request comes back as a placeholder result.
 export default function SystemStatusIndicator() {
-  const { aiState, serverOnline, latencyMs, lastCheckedAt, wake } = useSystemStatus()
+  const { aiState, serverOnline, latencyMs, lastCheckedAt, llmCallError, wake } = useSystemStatus()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const cfg = DOT_CONFIG[aiState]
@@ -112,7 +112,9 @@ export default function SystemStatusIndicator() {
               <div className="px-4 pb-3">
                 {aiState === 'offline' ? (
                   <p className="text-[11px] mb-2" style={{ color: 'rgb(var(--c-muted))' }}>
-                    Free-tier hosting spins the AI engine down after inactivity. Starting it now avoids getting a placeholder result on your next AI request.
+                    {llmCallError
+                      ? `The AI engine is reachable but every AI request is currently failing: ${llmCallError}`
+                      : 'Free-tier hosting spins the AI engine down after inactivity. Starting it now avoids getting a placeholder result on your next AI request.'}
                   </p>
                 ) : (
                   <p className="text-[11px] mb-2" style={{ color: 'rgb(var(--c-muted))' }}>

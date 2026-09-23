@@ -10,6 +10,11 @@ interface SystemStatus {
   serverOnline: boolean
   latencyMs: number | null
   lastCheckedAt: Date | null
+  // Only populated after wake() — the background poll uses the cheap
+  // "process is up" /health check, which can't detect this. wake() uses
+  // /ready (a real LLM call) so it can, e.g., an outage where the process
+  // is alive but every provider key is failing.
+  llmCallError: string | null
   // Explicitly wakes the AI engine (long timeout) and waits for a real
   // result — used by the "Start AI Engine" button, distinct from the
   // silent best-effort nudge AIWakeup fires on every page load.
@@ -23,6 +28,7 @@ export function useSystemStatus(): SystemStatus {
   const [serverOnline, setServerOnline] = useState(true)
   const [latencyMs, setLatencyMs] = useState<number | null>(null)
   const [lastCheckedAt, setLastCheckedAt] = useState<Date | null>(null)
+  const [llmCallError, setLlmCallError] = useState<string | null>(null)
   const wakingRef = useRef(false)
 
   const check = useCallback(async () => {
@@ -51,6 +57,7 @@ export function useSystemStatus(): SystemStatus {
       setServerOnline(true)
       setAiState(res.data.aiEngine?.status === 'online' ? 'online' : 'offline')
       setLatencyMs(res.data.aiEngine?.latencyMs ?? null)
+      setLlmCallError(res.data.aiEngine?.llmCallError ?? null)
       setLastCheckedAt(new Date())
     } catch {
       setServerOnline(false)
@@ -67,5 +74,5 @@ export function useSystemStatus(): SystemStatus {
     return () => clearInterval(interval)
   }, [check])
 
-  return { aiState, serverOnline, latencyMs, lastCheckedAt, wake }
+  return { aiState, serverOnline, latencyMs, lastCheckedAt, llmCallError, wake }
 }
