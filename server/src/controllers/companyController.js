@@ -4,10 +4,45 @@ const JobApplication = require('../models/JobApplication');
 const Student = require('../models/Student');
 const Notification = require('../models/Notification');
 const axios = require('axios');
+const crypto = require('crypto');
 const AI = process.env.AI_ENGINE_URL || 'http://localhost:8000';
 
 const READINESS_LABEL = (score) =>
   score >= 80 ? 'excellent' : score >= 60 ? 'good' : score >= 40 ? 'fair' : 'needs_growth';
+
+function cosineSimilarity(a, b) {
+  if (!a || !b || a.length !== b.length) return 0;
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  if (na === 0 || nb === 0) return 0;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+// Detects whether a student's skills changed since their embedding was
+// cached, without needing to hook every skill add/update/remove endpoint —
+// the check happens lazily, here, at search time instead.
+function skillsHash(skills) {
+  const names = (skills || []).map((s) => s.name.toLowerCase()).sort().join('|');
+  return crypto.createHash('md5').update(names).digest('hex');
+}
+
+// GET /api/company/jobs — the requesting company's OWN postings, any status
+// (active/draft/closed). Job Management, Pipeline and AI Matching all used
+// to call the public GET /api/jobs instead (all companies, active-only) —
+// which meant a company's own "Job Management" page showed every other
+// company's active postings too (including demo ones), draft jobs never
+// appeared at all, and clicking Delete on a job you didn't own silently
+// 404'd instead of just not being offered in the first place.
+exports.getMyJobs = async (req, res) => {
+  const company = await Company.findOne({ userId: req.user._id });
+  if (!company) return res.status(404).json({ message: 'Company profile not found' });
+  const jobs = await Job.find({ company: company._id }).sort({ createdAt: -1 });
+  res.json({ jobs });
+};
 
 // GET /api/company/profile
 exports.getProfile = async (req, res) => {
@@ -77,25 +112,107 @@ exports.getDashboard = async (req, res) => {
 };
 
 // GET /api/company/candidates  (AI-powered search)
+// location was previously missing from this projection entirely, so the
+// candidate card's location line was always blank regardless of blind mode.
+const CANDIDATE_FIELDS = 'name email skills cgpa department careerReadinessScore badges isPlaced location';
+
+// True server-side redaction for Blind Hiring list results — PII never
+// leaves the server, not just hidden in the UI. Applied as the very last
+// step before any candidates array is sent back.
+function redactForBlindMode(candidate) {
+  const anonymousId = `Candidate #${crypto.createHash('md5').update(candidate._id.toString()).digest('hex').slice(0, 6).toUpperCase()}`;
+  const { name, email, location, ...rest } = candidate; // eslint-disable-line no-unused-vars
+  return { ...rest, name: anonymousId, anonymousId, blind: true };
+}
+
+// GET /api/company/candidates
+// Structural filters (minCgpa/department/location) always apply first. A
+// `skills` value is treated as a free-text ROLE-FIT query and ranked with
+// Gemini 768-dim embeddings (services/embeddings.py, the same pipeline the
+// student-side job matcher uses) instead of a literal keyword/regex match —
+// "MERN" ranks a React/Node/Express/MongoDB profile highly even though none
+// of those skill names contain the string "MERN". Falls back to the old
+// keyword match only if the AI engine is unreachable.
 exports.searchCandidates = async (req, res) => {
-  const { skills, minCgpa, department, location, page = 1, limit = 20 } = req.query;
+  const { skills, minCgpa, department, location, page = 1, limit = 20, blind } = req.query;
+  const isBlind = blind === 'true';
 
   const filter = {};
   if (minCgpa) filter.cgpa = { $gte: Number(minCgpa) };
   if (department) filter.department = new RegExp(department, 'i');
   if (location) filter.location = new RegExp(location, 'i');
-  if (skills) {
-    const skillArr = skills.split(',').map(s => s.trim());
-    filter['skills.name'] = { $in: skillArr.map(s => new RegExp(s, 'i')) };
+
+  if (!skills || !skills.trim()) {
+    const students = await Student.find(filter)
+      .select(CANDIDATE_FIELDS)
+      .sort({ careerReadinessScore: -1 })
+      .skip((page - 1) * limit).limit(Number(limit));
+    const total = await Student.countDocuments(filter);
+    const candidates = students.map((s) => s.toObject());
+    return res.json({ candidates: isBlind ? candidates.map(redactForBlindMode) : candidates, total, mode: 'filter' });
   }
 
-  const students = await Student.find(filter)
-    .select('name email skills cgpa department careerReadinessScore badges isPlaced')
-    .sort({ careerReadinessScore: -1 })
-    .skip((page - 1) * limit).limit(Number(limit));
+  // Cap the pool embedded/ranked per search — plenty of headroom over the
+  // current portal size, just a guard against embedding the whole DB at once
+  // as it grows.
+  const pool = await Student.find(filter)
+    .select(`${CANDIDATE_FIELDS} +profileEmbedding +profileEmbeddingSkillsHash`)
+    .limit(300);
 
-  const total = await Student.countDocuments(filter);
-  res.json({ candidates: students, total });
+  if (pool.length === 0) return res.json({ candidates: [], total: 0, mode: 'semantic' });
+
+  const stale = pool.filter((s) => !s.profileEmbedding?.length || s.profileEmbeddingSkillsHash !== skillsHash(s.skills));
+
+  if (stale.length > 0) {
+    try {
+      const batchRes = await axios.post(`${AI}/api/v1/candidates/embed-batch`, {
+        students: stale.map((s) => ({ id: s._id.toString(), skills: s.skills.map((sk) => ({ name: sk.name, level: sk.level })) })),
+      }, { timeout: 60000 });
+      const vecById = new Map(batchRes.data.embeddings.map((e) => [e.id, e.vector]));
+      await Promise.all(stale.map(async (s) => {
+        const vec = vecById.get(s._id.toString());
+        if (!vec) return;
+        s.profileEmbedding = vec; // update in-memory copy too, so ranking below sees it
+        await Student.updateOne({ _id: s._id }, { $set: { profileEmbedding: vec, profileEmbeddingSkillsHash: skillsHash(s.skills) } });
+      }));
+    } catch (err) {
+      console.warn('Candidate embedding backfill failed:', err.message);
+    }
+  }
+
+  let queryVec = null;
+  try {
+    const qRes = await axios.post(`${AI}/api/v1/candidates/embed-text`, { text: skills }, { timeout: 15000 });
+    queryVec = qRes.data.vector;
+  } catch (err) {
+    console.warn('Query embedding failed, falling back to keyword match:', err.message);
+  }
+
+  if (!queryVec) {
+    const skillArr = skills.split(',').map((s) => s.trim());
+    const kwFilter = { ...filter, 'skills.name': { $in: skillArr.map((s) => new RegExp(s, 'i')) } };
+    const students = await Student.find(kwFilter)
+      .select(CANDIDATE_FIELDS)
+      .sort({ careerReadinessScore: -1 })
+      .skip((page - 1) * limit).limit(Number(limit));
+    const total = await Student.countDocuments(kwFilter);
+    const candidates = students.map((s) => s.toObject());
+    return res.json({ candidates: isBlind ? candidates.map(redactForBlindMode) : candidates, total, mode: 'keyword-fallback' });
+  }
+
+  const ranked = pool
+    .map((s) => {
+      const obj = s.toObject();
+      delete obj.profileEmbedding;
+      delete obj.profileEmbeddingSkillsHash;
+      return { ...obj, semanticScore: s.profileEmbedding?.length ? Math.round(cosineSimilarity(queryVec, s.profileEmbedding) * 100) : 0 };
+    })
+    .sort((a, b) => b.semanticScore - a.semanticScore);
+
+  const startIdx = (page - 1) * Number(limit);
+  const paged = ranked.slice(startIdx, startIdx + Number(limit));
+
+  res.json({ candidates: isBlind ? paged.map(redactForBlindMode) : paged, total: ranked.length, mode: 'semantic' });
 };
 
 // POST /api/company/candidates/match  — AI match for a specific job, ranked
@@ -177,6 +294,63 @@ exports.sourceCandidate = async (req, res) => {
   }
 
   res.status(201).json({ application });
+};
+
+// GET /api/company/candidates/:id/blind-profile — LLM-powered blind hiring.
+// Genuine server-side redaction, not client-side hiding: name, email,
+// location and institution NEVER leave this response, so there's nothing
+// for a recruiter to see even by inspecting network traffic. What's left
+// (skills, CGPA, career readiness, department as a field of study) plus an
+// LLM-written summary is what an unbiased, skill-first screen is built on.
+// Identity is only reachable through the separate GET .../reveal below — a
+// deliberate second action, not something that leaks alongside the profile.
+exports.getBlindProfile = async (req, res) => {
+  const student = await Student.findById(req.params.id).select('skills cgpa careerReadinessScore badges department dreamRole isPlaced');
+  if (!student) return res.status(404).json({ message: 'Candidate not found' });
+
+  const anonymousId = crypto.createHash('md5').update(student._id.toString()).digest('hex').slice(0, 6).toUpperCase();
+
+  let summary = null;
+  try {
+    const aiRes = await axios.post(`${AI}/api/v1/candidates/blind-summary`, {
+      department: student.department || '',
+      skills: student.skills.map((s) => s.name),
+      cgpa: student.cgpa || 0,
+      readiness: student.careerReadinessScore || 0,
+      dream_role: student.dreamRole || '',
+    }, { timeout: 20000 });
+    summary = aiRes.data.summary || null;
+  } catch (err) {
+    console.warn('Blind summary generation failed:', err.message);
+  }
+
+  res.json({
+    anonymousId: `Candidate #${anonymousId}`,
+    department: student.department,
+    skills: student.skills,
+    cgpa: student.cgpa,
+    careerReadinessScore: student.careerReadinessScore,
+    badges: student.badges,
+    dreamRole: student.dreamRole,
+    isPlaced: student.isPlaced,
+    summary,
+    redacted: ['name', 'email', 'location', 'university'],
+  });
+};
+
+// GET /api/company/candidates/:id/reveal — deliberate, separate action to
+// un-blind a candidate's identity once a recruiter has screened on merit.
+exports.revealCandidate = async (req, res) => {
+  const student = await Student.findById(req.params.id)
+    .select('name email location')
+    .populate({ path: 'university', select: 'name' });
+  if (!student) return res.status(404).json({ message: 'Candidate not found' });
+  res.json({
+    name: student.name,
+    email: student.email,
+    location: student.location,
+    university: student.university?.name || null,
+  });
 };
 
 // POST /api/company/kyc  — upload KYC doc URL

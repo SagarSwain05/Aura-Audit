@@ -59,7 +59,7 @@ export default function PipelinePage() {
   const [showSuggested, setShowSuggested] = useState(true)
 
   useEffect(() => {
-    jobsApi.getJobs().then((r) => {
+    companyApi.getMyJobs().then((r) => {
       const j = r.data.jobs || []
       setJobs(j)
       if (j.length > 0) setSelectedJob(j[0]._id)

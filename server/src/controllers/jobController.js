@@ -99,6 +99,9 @@ exports.deleteJob = async (req, res) => {
   const company = await Company.findOne({ userId: req.user._id });
   const job = await Job.findOneAndDelete({ _id: req.params.id, company: company._id });
   if (!job) return res.status(404).json({ message: 'Not found' });
+  // Otherwise these orphan — invisible in the Pipeline's job dropdown (which
+  // only lists still-existing jobs) but still sitting in the DB forever.
+  await JobApplication.deleteMany({ job: job._id });
   axios.delete(`${AI}/api/v1/jobs/index/${req.params.id}`).catch(() => {});
   res.json({ message: 'Deleted' });
 };
@@ -190,13 +193,17 @@ exports.updateApplicationStatus = async (req, res) => {
   if (msgs[status]) {
     const studentUser = await require('../models/User').findById(application.student.userId);
     if (studentUser) {
-      await Notification.create({
+      const notif = await Notification.create({
         user: studentUser._id,
         type: 'application_update',
         title: 'Application Update',
         message: msgs[status],
-        link: '/dashboard/student/jobs',
+        link: '/student/jobs',
       });
+      // This only wrote the DB row before — no live push, so a status
+      // change never actually reached the student in real time, only on
+      // their next full reload/poll of notifications.
+      if (global.emitToUser) global.emitToUser(studentUser._id.toString(), 'notification', notif);
     }
   }
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Brain, Zap, Users, ChevronDown, Star, Loader2 } from 'lucide-react'
-import { jobsApi, companyApi } from '@/lib/api'
+import { companyApi } from '@/lib/api'
 import toast from 'react-hot-toast'
 
 interface Match {
@@ -37,8 +37,8 @@ export default function AIMatchPage() {
   const [fetching, setFetching] = useState(true)
 
   useEffect(() => {
-    jobsApi.getJobs({ status: 'active' }).then((r) => {
-      setJobs(r.data.jobs || [])
+    companyApi.getMyJobs().then((r) => {
+      setJobs((r.data.jobs || []).filter((j: { status: string }) => j.status === 'active'))
     }).finally(() => setFetching(false))
   }, [])
 

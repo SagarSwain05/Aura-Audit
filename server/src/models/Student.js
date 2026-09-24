@@ -60,6 +60,14 @@ const studentSchema = new mongoose.Schema({
 
   // Career Metrics
   careerReadinessScore: { type: Number, default: 0 },
+  // 768-dim Gemini text-embedding-004 vector of this student's weighted
+  // skill profile — cached so the employer-side semantic candidate search
+  // only has to embed the recruiter's query at search time, not re-embed
+  // every candidate on every search. Cleared (not recomputed inline, to
+  // keep skill edits fast) whenever skills change; searchCandidates
+  // backfills it lazily for whoever's missing one.
+  profileEmbedding: { type: [Number], default: undefined, select: false },
+  profileEmbeddingSkillsHash: { type: String, default: undefined, select: false },
   careerPoints: {
     total: { type: Number, default: 0 },
     history: [{

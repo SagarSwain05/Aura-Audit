@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Briefcase, Plus, Edit2, Trash2, Eye, Loader2, Users, X, MapPin } from 'lucide-react'
-import { jobsApi } from '@/lib/api'
+import { jobsApi, companyApi } from '@/lib/api'
 import { CatalogPicker, MultiCatalogPicker } from '@/components/CatalogPicker'
 import toast from 'react-hot-toast'
 
@@ -45,7 +45,7 @@ export default function CompanyJobsPage() {
   const flatLocations = useMemo(() => Object.values(locationCatalog).flat(), [locationCatalog])
   const flatSkills = useMemo(() => Object.values(skillCatalog).flat(), [skillCatalog])
 
-  const load = () => jobsApi.getJobs().then((r) => setJobs(r.data.jobs || [])).finally(() => setLoading(false))
+  const load = () => companyApi.getMyJobs().then((r) => setJobs(r.data.jobs || [])).finally(() => setLoading(false))
   useEffect(() => {
     load()
     jobsApi.getLocationCatalog().then((r) => setLocationCatalog(r.data.catalog || {})).catch(() => {})
@@ -85,9 +85,14 @@ export default function CompanyJobsPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this job posting?')) return
-    await jobsApi.deleteJob(id)
-    setJobs((prev) => prev.filter((j) => j._id !== id))
-    toast.success('Deleted')
+    try {
+      await jobsApi.deleteJob(id)
+      setJobs((prev) => prev.filter((j) => j._id !== id))
+      toast.success('Deleted')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } }
+      toast.error(e.response?.data?.message || 'Failed to delete')
+    }
   }
 
   const openCreate = () => {

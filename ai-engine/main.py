@@ -25,6 +25,7 @@ from routers.assessment import router as assessment_router
 from routers.jobs import router as jobs_router
 from routers.live_jobs import router as live_jobs_router
 from routers.university_insights import router as university_insights_router
+from routers.candidates import router as candidates_router
 from services.llm_client import provider_status, llm_generate
 
 app = FastAPI(
@@ -48,6 +49,7 @@ app.include_router(assessment_router, prefix="/api/v1")
 app.include_router(jobs_router, prefix="/api/v1")
 app.include_router(live_jobs_router, prefix="/api/v1")
 app.include_router(university_insights_router, prefix="/api/v1")
+app.include_router(candidates_router, prefix="/api/v1")
 
 
 # ── Root + Health ─────────────────────────────────────

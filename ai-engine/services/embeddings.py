@@ -1,7 +1,7 @@
 """
-Embedding generation using Google Gemini text-embedding-004.
+Embedding generation using Google Gemini's embedding model.
 768-dimensional vectors via API — no local model download required.
-Falls back to keyword hash if API unavailable.
+Falls back to keyword hash if the API is unavailable.
 """
 
 import os
@@ -11,6 +11,12 @@ from google import genai
 from google.genai import types as genai_types
 
 _client = None
+_EMBED_DIM = 768
+# text-embedding-004 (this file's original model) was retired — Gemini's
+# current embedding model is gemini-embedding-001, which defaults to 3072
+# dims unless output_dimensionality is set explicitly. Externalized so a
+# future retirement doesn't require another silent-fallback debugging pass.
+_EMBED_MODEL = os.getenv("GEMINI_EMBED_MODEL", "gemini-embedding-001")
 
 def _get_client():
     global _client
@@ -24,7 +30,7 @@ def _get_client():
     return _client
 
 
-def _keyword_hash_embedding(text: str, dim: int = 768) -> np.ndarray:
+def _keyword_hash_embedding(text: str, dim: int = _EMBED_DIM) -> np.ndarray:
     """Deterministic fallback embedding via keyword hashing (no API)."""
     vec = np.zeros(dim, dtype=np.float32)
     words = text.lower().split()
@@ -39,20 +45,27 @@ def _keyword_hash_embedding(text: str, dim: int = 768) -> np.ndarray:
 
 
 def generate_embedding(text: str) -> np.ndarray:
-    """Encode text using Gemini text-embedding-004 (768-dim)."""
+    """Encode text using Gemini's embedding model (768-dim)."""
     try:
         client = _get_client()
         result = client.models.embed_content(
-            model="text-embedding-004",
+            model=_EMBED_MODEL,
             contents=text,
-            config=genai_types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT"),
+            config=genai_types.EmbedContentConfig(
+                task_type="RETRIEVAL_DOCUMENT",
+                output_dimensionality=_EMBED_DIM,
+            ),
         )
         vec = np.array(result.embeddings[0].values, dtype=np.float32)
         norm = np.linalg.norm(vec)
         if norm > 0:
             vec /= norm
         return vec
-    except Exception:
+    except Exception as e:
+        # Silent before — a dead model name (exactly what happened here) went
+        # undetected because every caller looked "successful" via the
+        # keyword-hash fallback instead of a visible error.
+        print(f"⚠️  Gemini embedding failed, using keyword-hash fallback: {e}")
         return _keyword_hash_embedding(text)
 
 

@@ -184,3 +184,20 @@ Return STRICT JSON:
   }}
 }}
 """
+
+BLIND_HIRING_SUMMARY_PROMPT = """You are writing a bias-free, skill-first candidate summary for a recruiter doing blind hiring — they will read ONLY this text, with no name, photo, college, city, or gender markers attached.
+
+STRICT RULES — breaking any of these defeats the purpose of blind hiring:
+- Never use a gendered pronoun (he/she/him/her/his/hers). Write "this candidate" or restructure the sentence instead.
+- Never mention or imply a name, college/university name, city, state, or country.
+- Never reference markers of institutional prestige ("IIT", "top-tier", "premier institute", "Ivy League", etc.) even if implied by the data.
+- Judge only what is given: skills, CGPA, career readiness, target role, department (a field of study, not an institution).
+
+Candidate data:
+- Department: {department}
+- Skills: {skills}
+- CGPA: {cgpa}/10
+- Career readiness score: {readiness}/100
+- Target role: {dream_role}
+
+Write a 2-3 sentence, skill-first summary a recruiter can use to evaluate fit purely on merit — what this candidate can actually do, and how ready they are for the target role. Return STRICT JSON, no markdown: {{"summary": "..."}}"""

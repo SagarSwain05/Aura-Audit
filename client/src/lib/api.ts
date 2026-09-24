@@ -143,9 +143,12 @@ export const careerApi = {
 // ── Company ────────────────────────────────────────────
 export const companyApi = {
   getDashboard: () => api.get('/api/company/dashboard'),
+  getMyJobs: () => api.get('/api/company/jobs'),
   getProfile: () => api.get('/api/company/profile'),
   updateProfile: (data: Record<string, unknown>) => api.put('/api/company/profile', data),
   searchCandidates: (params: Record<string, string>) => api.get('/api/company/candidates', { params }),
+  getBlindProfile: (id: string) => api.get(`/api/company/candidates/${id}/blind-profile`),
+  revealCandidate: (id: string) => api.get(`/api/company/candidates/${id}/reveal`),
   matchCandidates: (jobId: string, opts?: { minScore?: number; limit?: number }) =>
     api.post('/api/company/candidates/match', { jobId, ...opts }),
   sourceCandidate: (jobId: string, studentId: string) =>
